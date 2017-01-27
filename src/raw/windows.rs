@@ -99,6 +99,7 @@ mod winapi {
         pub fn WSAStartup(wVersionRequested: WORD, lpWSAData: LPWSADATA) -> c_int;
         pub fn WSACleanup() -> c_int;
 
+        pub fn getsockname(s: SOCKET, name: *mut SOCKADDR, namelen: *mut c_int) -> c_int;
         pub fn socket(af: c_int, _type: c_int, protocol: c_int) -> SOCKET;
         pub fn bind(s: SOCKET, name: *const SOCKADDR, namelen: c_int) -> c_int;
         pub fn listen(s: SOCKET, backlog: c_int) -> c_int;
@@ -169,6 +170,23 @@ impl Socket {
     ///Note: ownership is not transferred.
     pub fn raw(&self) -> SOCKET {
         self.inner
+    }
+
+    ///Retrieves socket name i.e. address
+    ///
+    ///Wraps `getsockname()`
+    ///
+    ///Available for binded/connected sockets.
+    pub fn name(&self) -> io::Result<net::SocketAddr> {
+        unsafe {
+            let mut storage: SOCKADDR_STORAGE_LH = mem::zeroed();
+            let mut len = mem::size_of_val(&storage) as c_int;
+
+            match getsockname(self.inner, &mut storage as *mut _ as *mut _, &mut len) {
+                SOCKET_ERROR => Err(io::Error::last_os_error()),
+                _ => sockaddr_to_addr(&storage, len)
+            }
+        }
     }
 
     ///Binds socket to address.
