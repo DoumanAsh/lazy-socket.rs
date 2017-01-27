@@ -1,0 +1,6 @@
+[package]
+name = "lazy-socket"
+version = "0.1.0"
+authors = ["Douman <douman@gmx.se>"]
+
+[dependencies]
