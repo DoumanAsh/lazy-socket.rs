@@ -106,7 +106,9 @@ mod winapi {
         pub fn accept(s: SOCKET, addr: *mut SOCKADDR, addrlen: *mut c_int) -> SOCKET;
         pub fn connect(s: SOCKET, name: *const SOCKADDR, namelen: c_int) -> c_int;
         pub fn recv(s: SOCKET, buf: *mut c_char, len: c_int, flags: c_int) -> c_int;
+        pub fn recvfrom(s: SOCKET, buf: *mut c_char, len: c_int, flags: c_int, from: *mut SOCKADDR, fromlen: *mut c_int) -> c_int;
         pub fn send(s: SOCKET, buf: *const c_char, len: c_int, flags: c_int) -> c_int;
+        pub fn sendto(s: SOCKET, buf: *const c_char, len: c_int, flags: c_int, to: *const SOCKADDR, tolen: c_int) -> c_int;
         pub fn getsockopt(s: SOCKET, level: c_int, optname: c_int, optval: *mut c_char, optlen: *mut c_int) -> c_int;
         pub fn setsockopt(s: SOCKET, level: c_int, optname: c_int, optval: *const c_char, optlen: c_int) -> c_int;
         pub fn shutdown(s: SOCKET, how: c_int) -> c_int;
@@ -211,10 +213,10 @@ impl Socket {
         }
     }
 
-    ///Reads some bytes from socket
+    ///Receives some bytes from socket
     ///
-    ///Number of read bytes is returned on success
-    pub fn read(&self, buf: &mut [u8]) -> io::Result<usize> {
+    ///Number of received bytes is returned on success
+    pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
         let len = cmp::min(buf.len(), i32::max_value() as usize) as i32;
         unsafe {
             match recv(self.inner, buf.as_mut_ptr() as *mut c_char, len, 0) {
@@ -234,6 +236,36 @@ impl Socket {
         }
     }
 
+    ///Receives some bytes from socket
+    ///
+    ///Number of received bytes and remote address are returned on success.
+    pub fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, net::SocketAddr)> {
+        let len = cmp::min(buf.len(), i32::max_value() as usize) as i32;
+        unsafe {
+            let mut storage: SOCKADDR_STORAGE_LH = mem::zeroed();
+            let mut storage_len = mem::size_of_val(&storage) as c_int;
+
+            match recvfrom(self.inner, buf.as_mut_ptr() as *mut c_char, len, 0, &mut storage as *mut _ as *mut _, &mut storage_len) {
+                -1 => {
+                    let error = io::Error::last_os_error();
+                    let raw_code = error.raw_os_error().unwrap();
+
+                    if raw_code == WSAESHUTDOWN as i32 {
+                        let peer_addr = sockaddr_to_addr(&storage, storage_len)?;
+                        Ok((0, peer_addr))
+                    }
+                    else {
+                        Err(error)
+                    }
+                },
+                n => {
+                    let peer_addr = sockaddr_to_addr(&storage, storage_len)?;
+                    Ok((n as usize, peer_addr))
+                }
+            }
+        }
+    }
+
     ///Sends some bytes through socket.
     ///
     ///Number of sent bytes is returned.
@@ -242,6 +274,34 @@ impl Socket {
 
         unsafe {
             match send(self.inner, buf.as_ptr() as *const c_char, len, 0) {
+                -1 => {
+                    let error = io::Error::last_os_error();
+                    let raw_code = error.raw_os_error().unwrap();
+
+                    if raw_code == WSAESHUTDOWN as i32 {
+                        Ok(0)
+                    }
+                    else {
+                        Err(error)
+                    }
+                },
+                n => Ok(n as usize)
+            }
+        }
+    }
+
+    ///Sends some bytes through socket toward specified peer.
+    ///
+    ///Number of sent bytes is returned.
+    ///
+    ///Note: that socket will be bound, if it isn't already.
+    ///Use method `name` to determine address.
+    pub fn send_to(&self, buf: &[u8], peer_addr: &net::SocketAddr) -> io::Result<usize> {
+        let len = cmp::min(buf.len(), i32::max_value() as usize) as i32;
+        let (addr, addr_len) = get_raw_addr(peer_addr);
+
+        unsafe {
+            match sendto(self.inner, buf.as_ptr() as *const c_char, len, 0, addr, addr_len) {
                 -1 => {
                     let error = io::Error::last_os_error();
                     let raw_code = error.raw_os_error().unwrap();
@@ -359,7 +419,9 @@ fn sockaddr_to_addr(storage: &SOCKADDR_STORAGE_LH, len: c_int) -> io::Result<net
                                         storage.sin_addr.s_addr[2],
                                         storage.sin_addr.s_addr[3]);
 
-            Ok(net::SocketAddr::V4(net::SocketAddrV4::new(ip, storage.sin_port)))
+            //Note to_be() swap bytes on LE targets
+            //As IP stuff is always BE, we need swap only on LE targets
+            Ok(net::SocketAddr::V4(net::SocketAddrV4::new(ip, storage.sin_port.to_be())))
         }
         AF_INET6 => {
             assert!(len as usize >= mem::size_of::<sockaddr_in6>());
@@ -373,7 +435,7 @@ fn sockaddr_to_addr(storage: &SOCKADDR_STORAGE_LH, len: c_int) -> io::Result<net
                                         storage.sin6_addr.s6_addr[6],
                                         storage.sin6_addr.s6_addr[7]);
 
-            Ok(net::SocketAddr::V6(net::SocketAddrV6::new(ip, storage.sin6_port, storage.sin6_flowinfo, storage.sin6_scope_id)))
+            Ok(net::SocketAddr::V6(net::SocketAddrV6::new(ip, storage.sin6_port.to_be(), storage.sin6_flowinfo, storage.sin6_scope_id)))
         }
         _ => {
             Err(io::Error::new(io::ErrorKind::InvalidInput, "Invalid addr type."))
