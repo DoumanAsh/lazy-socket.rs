@@ -117,6 +117,7 @@ use self::winapi::*;
 
 use std::sync::{Once, ONCE_INIT};
 
+///Raw socket
 pub struct Socket {
     inner: SOCKET
 }
@@ -271,7 +272,7 @@ impl Socket {
     pub fn get_opt<T>(&self, level: c_int, name: c_int) -> io::Result<T> {
         unsafe {
             let mut value: T = mem::zeroed();
-            let mut value_ptr = &mut value as *mut T as *mut c_char;
+            let value_ptr = &mut value as *mut T as *mut c_char;
             let mut value_len = mem::size_of::<T>() as c_int;
 
             match getsockopt(self.inner, level, name, value_ptr, &mut value_len) {
@@ -299,6 +300,19 @@ impl Socket {
     pub fn shutdown(&self, direction: ShutdownType) -> io::Result<()> {
         unsafe {
             match shutdown(self.inner, direction.get_raw_how()) {
+                0 => Ok(()),
+                _ => Err(io::Error::last_os_error())
+            }
+        }
+    }
+
+    ///Closes socket.
+    ///
+    ///Note: on `Drop` socket will be closed on its own.
+    ///There is no need to close it explicitly.
+    pub fn close(&self) -> io::Result<()> {
+        unsafe {
+            match closesocket(self.inner) {
                 0 => Ok(()),
                 _ => Err(io::Error::last_os_error())
             }
@@ -351,9 +365,7 @@ fn sockaddr_to_addr(storage: &SOCKADDR_STORAGE_LH, len: c_int) -> io::Result<net
 
 impl Drop for Socket {
     fn drop(&mut self) {
-        unsafe {
-            let _ = self.shutdown(ShutdownType::Both);
-            let _ = closesocket(self.inner);
-        }
+        let _ = self.shutdown(ShutdownType::Both);
+        let _ = self.close();
     }
 }
