@@ -111,6 +111,7 @@ mod winapi {
         pub fn sendto(s: SOCKET, buf: *const c_char, len: c_int, flags: c_int, to: *const SOCKADDR, tolen: c_int) -> c_int;
         pub fn getsockopt(s: SOCKET, level: c_int, optname: c_int, optval: *mut c_char, optlen: *mut c_int) -> c_int;
         pub fn setsockopt(s: SOCKET, level: c_int, optname: c_int, optval: *const c_char, optlen: c_int) -> c_int;
+        pub fn ioctlsocket(s: SOCKET, cmd: c_long, argp: *mut c_ulong) -> c_int;
         pub fn shutdown(s: SOCKET, how: c_int) -> c_int;
         pub fn closesocket(s: SOCKET) -> c_int;
     }
@@ -300,7 +301,7 @@ impl Socket {
     ///
     ///Number of sent bytes is returned.
     ///
-    ///Note: that socket will be bound, if it isn't already.
+    ///Note: the socket will be bound, if it isn't already.
     ///Use method `name` to determine address.
     pub fn send_to(&self, buf: &[u8], peer_addr: &net::SocketAddr) -> io::Result<usize> {
         let len = cmp::min(buf.len(), i32::max_value() as usize) as i32;
@@ -379,6 +380,29 @@ impl Socket {
             }
         }
     }
+
+    ///Sets I/O parameters of socket.
+    ///
+    ///It uses `ioctlsocket` under hood.
+    pub fn ioctl(&self, request: c_int, value: c_ulong) -> io::Result<()> {
+        unsafe {
+            let mut value = value;
+            let value = &mut value as *mut c_ulong;
+
+            match ioctlsocket(self.inner, request, value) {
+                0 => Ok(()),
+                _ => Err(io::Error::last_os_error())
+            }
+        }
+    }
+
+    ///Sets non-blocking mode.
+    pub fn set_nonblocking(&self, value: bool) -> io::Result<()> {
+        const FIONBIO: c_ulong = 0x8004667e;
+
+        self.ioctl(FIONBIO as c_long, value as c_ulong)
+    }
+
 
     ///Stops receive and/or send over socket.
     pub fn shutdown(&self, direction: ShutdownType) -> io::Result<()> {

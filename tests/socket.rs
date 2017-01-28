@@ -154,4 +154,7 @@ fn socket_test_options() {
     let result = socket.get_opt::<bool>(level, name);
     assert!(result.is_ok());
     assert!(result.unwrap());
+
+    assert!(socket.set_nonblocking(true).is_ok());
+    assert!(socket.set_nonblocking(false).is_ok());
 }
