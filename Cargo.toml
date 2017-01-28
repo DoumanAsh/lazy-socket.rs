@@ -1,6 +1,6 @@
 [package]
 name = "lazy-socket"
-version = "0.0.2"
+version = "0.0.3"
 authors = ["Douman <douman@gmx.se>"]
 description = "Low level Raw Socket API. WIP"
 repository = "https://github.com/DoumanAsh/lazy-socket.rs"
