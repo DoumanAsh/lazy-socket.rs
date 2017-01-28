@@ -1,9 +1,11 @@
 extern crate lazy_socket;
 
+use std::thread;
 use std::net;
 use std::str::FromStr;
 use std::os::raw::*;
 use lazy_socket::raw::Socket;
+use lazy_socket::raw::ShutdownType;
 
 #[test]
 fn socket_new_raw_icmp() {
@@ -36,7 +38,7 @@ fn socket_test_udp() {
     let ty: c_int = 2;
     let proto: c_int = 17;
     let data = [1, 2, 3, 4];
-    let addr = net::SocketAddr::from_str("127.0.0.1:666").unwrap();
+    let addr = net::SocketAddr::from_str("127.0.0.1:1666").unwrap();
 
     let server = Socket::new(family, ty, proto).unwrap();
     assert!(server.bind(&addr).is_ok());
@@ -88,4 +90,47 @@ fn socket_test_udp() {
     assert_eq!(result_len, data.len());
     assert_eq!(read_data[result_len], 0);
     assert_eq!(&read_data[..result_len], data);
+}
+
+#[test]
+fn socket_test_tcp() {
+    let family: c_int = 2;
+    let ty: c_int = 1;
+    let proto: c_int = 6;
+    let data = [1, 2, 3, 4];
+    let server_addr = net::SocketAddr::from_str("127.0.0.1:60000").unwrap();
+    let client_addr = net::SocketAddr::from_str("127.0.0.1:65003").unwrap();
+
+    let server = Socket::new(family, ty, proto).unwrap();
+    assert!(server.bind(&server_addr).is_ok());
+    let addr = server.name().unwrap();
+    assert_eq!(addr, server_addr);
+    assert!(server.listen(1).is_ok());
+
+    let client = Socket::new(family, ty, proto).unwrap();
+    assert!(client.bind(&client_addr).is_ok());
+    let addr = client.name().unwrap();
+    assert_eq!(addr, client_addr);
+
+    let th = thread::spawn(move || {
+        let result = server.accept();
+        assert!(result.is_ok());
+        let (result_socket, result_addr) = result.unwrap();
+
+        assert_eq!(result_addr, client_addr);
+
+        let mut buf = [0; 10];
+        let result = result_socket.recv(&mut buf);
+        assert!(result.is_ok());
+        let result_len = result.unwrap();
+        assert_eq!(result_len, data.len());
+        assert_eq!(buf[result_len], 0);
+        assert_eq!(&buf[..result_len], data);
+    });
+
+    let result = client.connect(&server_addr);
+    assert!(result.is_ok());
+    assert!(client.send(&data).is_ok());
+
+    assert!(th.join().is_ok());
 }

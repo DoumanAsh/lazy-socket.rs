@@ -145,6 +145,12 @@ impl ShutdownType {
     }
 }
 
+impl Into<c_int> for ShutdownType {
+    fn into(self) -> c_int {
+        self.get_raw_how()
+    }
+}
+
 impl Socket {
     ///Initializes new socket.
     ///
