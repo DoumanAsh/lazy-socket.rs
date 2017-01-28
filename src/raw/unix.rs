@@ -1,28 +1,71 @@
+use std::net;
+use std::io;
+use std::mem;
+use std::cmp;
+
 mod c {
     extern crate libc;
-    use std::os::raw::*;
+
+    //Types
+    pub use self::libc::{
+        c_int,
+        c_void,
+        c_char,
+        c_long,
+        c_ulong,
+        ssize_t,
+        socklen_t,
+        size_t,
+        sockaddr,
+        sockaddr_storage,
+        sa_family_t,
+        in_port_t
+    };
+
+    #[repr(C)]
+    #[derive(Copy, Clone)]
+    pub struct in_addr {
+        pub s_addr: [u8; 4]
+    }
+
+    #[repr(C)]
+    #[derive(Copy, Clone)]
+    pub struct sockaddr_in {
+        pub sin_family: sa_family_t,
+        pub sin_port: in_port_t,
+        pub sin_addr: in_addr,
+        pub sin_zero: [u8; 8],
+    }
+
+    #[repr(C)]
+    #[derive(Copy, Clone)]
+    pub struct in6_addr {
+        pub s6_addr: [u16; 8],
+    }
+
+    #[repr(C)]
+    #[derive(Copy, Clone)]
+    pub struct sockaddr_in6 {
+        pub sin6_family: sa_family_t,
+        pub sin6_port: in_port_t,
+        pub sin6_flowinfo: u32,
+        pub sin6_addr: in6_addr,
+        pub sin6_scope_id: u32,
+    }
 
     pub type SOCKET = c_int;
     pub const SOCKET_ERROR: c_int = -1;
     pub const SOCKET_SHUTDOWN: c_int = libc::ESHUTDOWN;
 
-    //Structs
-    pub use libc::{
-        sockaddr,
-        sockaddr_in,
-        sockaddr_in6,
-        sockaddr_storage
-    };
-
     //Constants
-    pub use libc::{
+    pub use self::libc::{
         AF_INET,
         AF_INET6,
         FIONBIO
     };
 
     //Functions
-    pub use libc::{
+    pub use self::libc::{
         socket,
         getsockname,
         bind,
@@ -95,7 +138,7 @@ impl Socket {
     pub fn name(&self) -> io::Result<net::SocketAddr> {
         unsafe {
             let mut storage: sockaddr_storage = mem::zeroed();
-            let mut len = mem::size_of_val(&storage) as c_int;
+            let mut len = mem::size_of_val(&storage) as socklen_t;
 
             match getsockname(self.inner, &mut storage as *mut _ as *mut _, &mut len) {
                 SOCKET_ERROR => Err(io::Error::last_os_error()),
@@ -130,10 +173,10 @@ impl Socket {
     ///
     ///Number of received bytes is returned on success
     pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
-        let len = cmp::min(buf.len(), i32::max_value() as usize) as i32;
+        let len = cmp::min(buf.len(), i32::max_value() as usize) as size_t;
         unsafe {
-            match recv(self.inner, buf.as_mut_ptr() as *mut c_char, len, 0) {
-                SOCKET_ERROR => Err(io::Error::last_os_error()),
+            match recv(self.inner, buf.as_mut_ptr() as *mut c_void, len, 0) {
+                -1 => Err(io::Error::last_os_error()),
                 n => Ok(n as usize)
             }
         }
@@ -143,13 +186,13 @@ impl Socket {
     ///
     ///Number of received bytes and remote address are returned on success.
     pub fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, net::SocketAddr)> {
-        let len = cmp::min(buf.len(), i32::max_value() as usize) as i32;
+        let len = cmp::min(buf.len(), i32::max_value() as usize) as size_t;
         unsafe {
             let mut storage: sockaddr_storage = mem::zeroed();
-            let mut storage_len = mem::size_of_val(&storage) as c_int;
+            let mut storage_len = mem::size_of_val(&storage) as socklen_t;
 
-            match recvfrom(self.inner, buf.as_mut_ptr() as *mut c_char, len, 0, &mut storage as *mut _ as *mut _, &mut storage_len) {
-                SOCKET_ERROR => Err(io::Error::last_os_error()),
+            match recvfrom(self.inner, buf.as_mut_ptr() as *mut c_void, len, 0, &mut storage as *mut _ as *mut _, &mut storage_len) {
+                -1 => Err(io::Error::last_os_error()),
                 n => {
                     let peer_addr = sockaddr_to_addr(&storage, storage_len)?;
                     Ok((n as usize, peer_addr))
@@ -162,11 +205,11 @@ impl Socket {
     ///
     ///Number of sent bytes is returned.
     pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
-        let len = cmp::min(buf.len(), i32::max_value() as usize) as i32;
+        let len = cmp::min(buf.len(), i32::max_value() as usize) as size_t;
 
         unsafe {
-            match send(self.inner, buf.as_ptr() as *const c_char, len, 0) {
-                SOCKET_ERROR => {
+            match send(self.inner, buf.as_ptr() as *const c_void, len, 0) {
+                -1 => {
                     let error = io::Error::last_os_error();
                     let raw_code = error.raw_os_error().unwrap();
 
@@ -189,12 +232,12 @@ impl Socket {
     ///Note: the socket will be bound, if it isn't already.
     ///Use method `name` to determine address.
     pub fn send_to(&self, buf: &[u8], peer_addr: &net::SocketAddr) -> io::Result<usize> {
-        let len = cmp::min(buf.len(), i32::max_value() as usize) as i32;
+        let len = cmp::min(buf.len(), i32::max_value() as usize) as size_t;
         let (addr, addr_len) = get_raw_addr(peer_addr);
 
         unsafe {
-            match sendto(self.inner, buf.as_ptr() as *const c_char, len, 0, addr, addr_len) {
-                SOCKET_ERROR => {
+            match sendto(self.inner, buf.as_ptr() as *const c_void, len, 0, addr, addr_len) {
+                -1 => {
                     let error = io::Error::last_os_error();
                     let raw_code = error.raw_os_error().unwrap();
 
@@ -214,7 +257,7 @@ impl Socket {
     pub fn accept(&self) -> io::Result<(Socket, net::SocketAddr)> {
         unsafe {
             let mut storage: sockaddr_storage = mem::zeroed();
-            let mut len = mem::size_of_val(&storage) as c_int;
+            let mut len = mem::size_of_val(&storage) as socklen_t;
 
             match accept(self.inner, &mut storage as *mut _ as *mut _, &mut len) {
                 SOCKET_ERROR => Err(io::Error::last_os_error()),
@@ -242,8 +285,8 @@ impl Socket {
     pub fn get_opt<T>(&self, level: c_int, name: c_int) -> io::Result<T> {
         unsafe {
             let mut value: T = mem::zeroed();
-            let value_ptr = &mut value as *mut T as *mut c_char;
-            let mut value_len = mem::size_of::<T>() as c_int;
+            let value_ptr = &mut value as *mut T as *mut c_void;
+            let mut value_len = mem::size_of::<T>() as socklen_t;
 
             match getsockopt(self.inner, level, name, value_ptr, &mut value_len) {
                 0 => Ok(value),
@@ -257,9 +300,9 @@ impl Socket {
     ///Value is generally integer or C struct.
     pub fn set_opt<T>(&self, level: c_int, name: c_int, value: T) -> io::Result<()> {
         unsafe {
-            let value = &value as *const T as *const c_char;
+            let value = &value as *const T as *const c_void;
 
-            match setsockopt(self.inner, level, name, value, mem::size_of::<T>() as c_int) {
+            match setsockopt(self.inner, level, name, value, mem::size_of::<T>() as socklen_t) {
                 0 => Ok(()),
                 _ => Err(io::Error::last_os_error())
             }
@@ -269,7 +312,7 @@ impl Socket {
     ///Sets I/O parameters of socket.
     ///
     ///It uses `ioctlsocket` under hood.
-    pub fn ioctl(&self, request: c_int, value: c_ulong) -> io::Result<()> {
+    pub fn ioctl(&self, request: c_ulong, value: c_ulong) -> io::Result<()> {
         unsafe {
             let mut value = value;
             let value = &mut value as *mut c_ulong;
@@ -283,7 +326,7 @@ impl Socket {
 
     ///Sets non-blocking mode.
     pub fn set_nonblocking(&self, value: bool) -> io::Result<()> {
-        self.ioctl(FIONBIO as c_long, value as c_ulong)
+        self.ioctl(FIONBIO, value as c_ulong)
     }
 
 
@@ -311,18 +354,18 @@ impl Socket {
     }
 }
 
-fn get_raw_addr(addr: &net::SocketAddr) -> (*const sockaddr, c_int) {
+fn get_raw_addr(addr: &net::SocketAddr) -> (*const sockaddr, socklen_t) {
     match *addr {
         net::SocketAddr::V4(ref a) => {
-            (a as *const _ as *const _, mem::size_of_val(a) as c_int)
+            (a as *const _ as *const _, mem::size_of_val(a) as socklen_t)
         }
         net::SocketAddr::V6(ref a) => {
-            (a as *const _ as *const _, mem::size_of_val(a) as c_int)
+            (a as *const _ as *const _, mem::size_of_val(a) as socklen_t)
         }
     }
 }
 
-fn sockaddr_to_addr(storage: &sockaddr_storage, len: c_int) -> io::Result<net::SocketAddr> {
+fn sockaddr_to_addr(storage: &sockaddr_storage, len: socklen_t) -> io::Result<net::SocketAddr> {
     match storage.ss_family as c_int {
         AF_INET => {
             assert!(len as usize >= mem::size_of::<sockaddr_in>());

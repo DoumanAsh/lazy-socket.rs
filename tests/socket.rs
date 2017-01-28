@@ -19,7 +19,10 @@ fn socket_new_raw_icmp() {
     if let Err(error) = socket {
         let error_code = error.raw_os_error().unwrap();
 
+        #[cfg(windows)]
         assert_eq!(error_code, 10013); //Error code for insufficient admin rights.
+        #[cfg(unix)]
+        assert_eq!(error_code, 1);
         //We can skip in this case.
         return;
     }
@@ -145,12 +148,19 @@ fn socket_test_tcp() {
 
 #[test]
 fn socket_test_options() {
+    let value_true: c_int = 1;
     let family: c_int = 2;
     let ty: c_int = 1;
     let proto: c_int = 6;
 
+    #[cfg(windows)]
     let level: c_int = 0xffff; //SOL_SOCKET
+    #[cfg(unix)]
+    let level: c_int = 1; //SOL_SOCKET
+    #[cfg(windows)]
     let name: c_int = 0x0004; //SO_REUSEADDR
+    #[cfg(unix)]
+    let name: c_int = 2; //SO_REUSEADDR
 
     let socket = Socket::new(family, ty, proto).unwrap();
 
@@ -158,7 +168,8 @@ fn socket_test_options() {
     assert!(result.is_ok());
     assert!(!result.unwrap());
 
-    assert!(socket.set_opt(level, name, true).is_ok());
+    let result = socket.set_opt(level, name, value_true);
+    assert!(result.is_ok());
 
     let result = socket.get_opt::<bool>(level, name);
     assert!(result.is_ok());
