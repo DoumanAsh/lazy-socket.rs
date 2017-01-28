@@ -127,28 +127,19 @@ pub struct Socket {
 }
 
 ///Type of socket's shutdown operation.
+#[derive(Copy, Clone)]
 pub enum ShutdownType {
     ///Stops any further receives.
-    Receive,
+    Receive = 0,
     ///Stops any further sends.
-    Send,
+    Send = 1,
     ///Stops both sends and receives.
-    Both
-}
-
-impl ShutdownType {
-    fn get_raw_how(&self) -> c_int {
-        match *self {
-            ShutdownType::Receive => 0,
-            ShutdownType::Send => 1,
-            ShutdownType::Both => 2
-        }
-    }
+    Both = 2
 }
 
 impl Into<c_int> for ShutdownType {
     fn into(self) -> c_int {
-        self.get_raw_how()
+        self as c_int
     }
 }
 
@@ -407,7 +398,7 @@ impl Socket {
     ///Stops receive and/or send over socket.
     pub fn shutdown(&self, direction: ShutdownType) -> io::Result<()> {
         unsafe {
-            match shutdown(self.inner, direction.get_raw_how()) {
+            match shutdown(self.inner, direction.into()) {
                 0 => Ok(()),
                 _ => Err(io::Error::last_os_error())
             }
