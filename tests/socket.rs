@@ -8,13 +8,22 @@ use lazy_socket::raw::Socket;
 
 #[test]
 fn socket_new_raw_icmp() {
-    //Test requires admin priviligies.
+    //Test requires admin privileges.
     let family: c_int = 2;
     let ty: c_int = 3;
     let proto: c_int = 1;
     let addr = net::SocketAddr::from_str("0.0.0.0:0").unwrap();
 
     let socket = Socket::new(family, ty, proto);
+
+    if let Err(error) = socket {
+        let error_code = error.raw_os_error().unwrap();
+
+        assert_eq!(error_code, 10013); //Error code for insufficient admin rights.
+        //We can skip in this case.
+        return;
+    }
+
     assert!(socket.is_ok());
     let socket = socket.unwrap();
 
