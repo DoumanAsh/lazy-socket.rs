@@ -164,16 +164,16 @@ fn socket_test_options() {
 
     let socket = Socket::new(family, ty, proto).unwrap();
 
-    let result = socket.get_opt::<bool>(level, name);
+    let result = socket.get_opt::<c_int>(level, name);
     assert!(result.is_ok());
-    assert!(!result.unwrap());
+    assert_eq!(result.unwrap(), 0);
 
     let result = socket.set_opt(level, name, value_true);
     assert!(result.is_ok());
 
-    let result = socket.get_opt::<bool>(level, name);
+    let result = socket.get_opt::<c_int>(level, name);
     assert!(result.is_ok());
-    assert!(result.unwrap());
+    assert_eq!(result.unwrap(), value_true);
 
     assert!(socket.set_nonblocking(true).is_ok());
     assert!(socket.set_nonblocking(false).is_ok());
