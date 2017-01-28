@@ -8,3 +8,6 @@ documentation = "https://docs.rs/crate/lazy-socket/"
 license = "MIT"
 
 [dependencies]
+
+[target."cfg(unix)".dependencies]
+libc = "^0.2.20"

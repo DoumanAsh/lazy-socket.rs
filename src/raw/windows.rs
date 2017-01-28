@@ -121,11 +121,6 @@ use self::winapi::*;
 
 use std::sync::{Once, ONCE_INIT};
 
-///Raw socket
-pub struct Socket {
-    inner: SOCKET
-}
-
 ///Type of socket's shutdown operation.
 #[derive(Copy, Clone)]
 pub enum ShutdownType {
@@ -141,6 +136,11 @@ impl Into<c_int> for ShutdownType {
     fn into(self) -> c_int {
         self as c_int
     }
+}
+
+///Raw socket
+pub struct Socket {
+    inner: SOCKET
 }
 
 impl Socket {
