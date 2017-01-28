@@ -5,7 +5,6 @@ use std::net;
 use std::str::FromStr;
 use std::os::raw::*;
 use lazy_socket::raw::Socket;
-use lazy_socket::raw::ShutdownType;
 
 #[test]
 fn socket_new_raw_icmp() {
@@ -133,4 +132,26 @@ fn socket_test_tcp() {
     assert!(client.send(&data).is_ok());
 
     assert!(th.join().is_ok());
+}
+
+#[test]
+fn socket_test_options() {
+    let family: c_int = 2;
+    let ty: c_int = 1;
+    let proto: c_int = 6;
+
+    let level: c_int = 0xffff; //SOL_SOCKET
+    let name: c_int = 0x0004; //SO_REUSEADDR
+
+    let socket = Socket::new(family, ty, proto).unwrap();
+
+    let result = socket.get_opt::<bool>(level, name);
+    assert!(result.is_ok());
+    assert!(!result.unwrap());
+
+    assert!(socket.set_opt(level, name, true).is_ok());
+
+    let result = socket.get_opt::<bool>(level, name);
+    assert!(result.is_ok());
+    assert!(result.unwrap());
 }
