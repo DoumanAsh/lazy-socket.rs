@@ -1,4 +1,6 @@
 extern crate lazy_socket;
+#[cfg(unix)]
+extern crate libc;
 
 use std::thread;
 use std::net;
@@ -156,11 +158,11 @@ fn socket_test_options() {
     #[cfg(windows)]
     let level: c_int = 0xffff; //SOL_SOCKET
     #[cfg(unix)]
-    let level: c_int = 1; //SOL_SOCKET
+    let level: c_int = libc::SOL_SOCKET; //SOL_SOCKET
     #[cfg(windows)]
     let name: c_int = 0x0004; //SO_REUSEADDR
     #[cfg(unix)]
-    let name: c_int = 2; //SO_REUSEADDR
+    let name: c_int = libc::SO_REUSEADDR; //SO_REUSEADDR
 
     let socket = Socket::new(family, ty, proto).unwrap();
 
