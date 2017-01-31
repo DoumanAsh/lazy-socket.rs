@@ -470,3 +470,29 @@ impl Drop for Socket {
         let _ = self.close();
     }
 }
+
+use std::os::windows::io::{
+    AsRawSocket,
+    FromRawSocket,
+    IntoRawSocket,
+};
+
+impl AsRawSocket for Socket {
+    fn as_raw_socket(&self) -> SOCKET {
+        self.inner
+    }
+}
+
+impl FromRawSocket for Socket {
+    unsafe fn from_raw_socket(sock: SOCKET) -> Self {
+        Socket {inner: sock}
+    }
+}
+
+impl IntoRawSocket for Socket {
+    fn into_raw_socket(self) -> SOCKET {
+        let result = self.inner;
+        mem::forget(self);
+        result
+    }
+}

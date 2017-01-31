@@ -180,3 +180,55 @@ fn socket_test_options() {
     assert!(socket.set_nonblocking(true).is_ok());
     assert!(socket.set_nonblocking(false).is_ok());
 }
+
+#[cfg(windows)]
+#[test]
+fn socket_as_into_from_traits() {
+    use std::os::windows::io::{
+        AsRawSocket,
+        FromRawSocket,
+        IntoRawSocket,
+    };
+
+    let family: c_int = 2;
+    let ty: c_int = 1;
+    let proto: c_int = 6;
+
+    let raw_socket;
+
+    {
+        let socket = Socket::new(family, ty, proto).unwrap();
+        raw_socket = socket.into_raw_socket();
+    }
+
+    let socket = unsafe { Socket::from_raw_socket(raw_socket) };
+
+    assert_eq!(raw_socket, socket.as_raw_socket());
+    assert!(socket.close().is_ok());
+}
+
+#[cfg(unix)]
+#[test]
+fn socket_as_into_from_traits() {
+    use std::os::unix::io::{
+        AsRawFd,
+        FromRawFd,
+        IntoRawFd,
+    };
+
+    let family: c_int = 2;
+    let ty: c_int = 1;
+    let proto: c_int = 6;
+
+    let raw_socket;
+
+    {
+        let socket = Socket::new(family, ty, proto).unwrap();
+        raw_socket = socket.into_raw_fd();
+    }
+
+    let socket = unsafe { Socket::from_raw_fd(raw_socket) };
+
+    assert_eq!(raw_socket, socket.as_raw_fd());
+    assert!(socket.close().is_ok());
+}

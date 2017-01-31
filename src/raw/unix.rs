@@ -405,3 +405,29 @@ impl Drop for Socket {
         let _ = self.close();
     }
 }
+
+use std::os::unix::io::{
+    AsRawFd,
+    FromRawFd,
+    IntoRawFd,
+};
+
+impl AsRawFd for Socket {
+    fn as_raw_fd(&self) -> SOCKET {
+        self.inner
+    }
+}
+
+impl FromRawFd for Socket {
+    unsafe fn from_raw_fd(sock: SOCKET) -> Self {
+        Socket {inner: sock}
+    }
+}
+
+impl IntoRawFd for Socket {
+    fn into_raw_fd(self) -> SOCKET {
+        let result = self.inner;
+        mem::forget(self);
+        result
+    }
+}
