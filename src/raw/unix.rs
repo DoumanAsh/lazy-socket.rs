@@ -466,8 +466,6 @@ fn sockets_to_fd_set(sockets: &[&Socket]) -> (c_int, fd_set) {
 ///Returns number of sockets that are ready.
 ///
 ///If timeout isn't specified then select will be a blocking call.
-///
-///**Note:** number of each set cannot be bigger than FD_SETSIZE i.e. 64
 pub fn select(read_fds: &[&Socket], write_fds: &[&Socket], except_fds: &[&Socket], timeout_ms: Option<u64>) -> io::Result<c_int> {
     let (max_read_fd, mut raw_read_fds) = sockets_to_fd_set(read_fds);
     let (max_write_fd, mut raw_write_fds) = sockets_to_fd_set(write_fds);

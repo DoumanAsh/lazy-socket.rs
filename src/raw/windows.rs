@@ -541,14 +541,23 @@ fn sockets_to_fd_set(sockets: &[&Socket]) -> winapi::FD_SET {
 ///
 ///If timeout isn't specified then select will be blocking call.
 ///
-///**Note:** number of each set cannot be bigger than FD_SETSIZE i.e. 64
+///## Note:
+///
+///Number of each set cannot be bigger than FD_SETSIZE i.e. 64
+///
+///## Warning:
+///
+///It is invalid to pass all sets of descriptors empty on Windows.
 pub fn select(read_fds: &[&Socket], write_fds: &[&Socket], except_fds: &[&Socket], timeout_ms: Option<u64>) -> io::Result<c_int> {
     let mut raw_read_fds = sockets_to_fd_set(read_fds);
     let mut raw_write_fds = sockets_to_fd_set(write_fds);
     let mut raw_except_fds = sockets_to_fd_set(except_fds);
 
     unsafe {
-        match winapi::select(0, &mut raw_read_fds, &mut raw_write_fds, &mut raw_except_fds,
+        match winapi::select(0,
+                             if read_fds.len() > 0 { &mut raw_read_fds } else { ptr::null_mut() },
+                             if write_fds.len() > 0 { &mut raw_write_fds } else { ptr::null_mut() },
+                             if except_fds.len() > 0 { &mut raw_except_fds } else { ptr::null_mut() },
                              if let Some(timeout_ms) = timeout_ms { &ms_to_timeval(timeout_ms) } else { ptr::null() } ) {
             winapi::SOCKET_ERROR => Err(io::Error::last_os_error()),
             result @ _ => Ok(result)
