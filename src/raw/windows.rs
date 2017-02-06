@@ -3,6 +3,7 @@ use std::os::raw::*;
 use std::net;
 use std::mem;
 use std::cmp;
+use std::ptr;
 
 //WinAPI Start
 mod winapi {
@@ -23,6 +24,7 @@ mod winapi {
     pub const AF_INET: c_int = 2;
     pub const AF_INET6: c_int = 23;
     pub const WSAESHUTDOWN: DWORD = 10058;
+    pub const FD_SETSIZE: usize = 64;
 
     pub const WSADESCRIPTION_LEN: usize = 256;
     pub const WSASYS_STATUS_LEN: usize = 128;
@@ -43,8 +45,24 @@ mod winapi {
         pub szSystemStatus: [c_char; WSASYS_STATUS_LEN + 1],
     }
 
+    #[repr(C)] #[derive(Copy)]
+    pub struct FD_SET {
+        pub fd_count: c_uint,
+        pub fd_array: [SOCKET; FD_SETSIZE],
+    }
+
+    impl Clone for FD_SET {
+        fn clone(&self) -> FD_SET { *self }
+    }
+
     impl Clone for WSADATA {
         fn clone(&self) -> WSADATA { *self }
+    }
+
+    #[repr(C)] #[derive(Clone, Copy)]
+    pub struct timeval {
+        pub tv_sec: c_long,
+        pub tv_usec: c_long,
     }
 
     #[repr(C)]
@@ -114,10 +132,9 @@ mod winapi {
         pub fn ioctlsocket(s: SOCKET, cmd: c_long, argp: *mut c_ulong) -> c_int;
         pub fn shutdown(s: SOCKET, how: c_int) -> c_int;
         pub fn closesocket(s: SOCKET) -> c_int;
+        pub fn select(nfds: c_int, readfds: *mut FD_SET, writefds: *mut FD_SET, exceptfds: *mut FD_SET, timeout: *const timeval) -> c_int;
     }
 }
-
-use self::winapi::*;
 
 use std::sync::{Once, ONCE_INIT};
 
@@ -140,7 +157,7 @@ impl Into<c_int> for ShutdownType {
 
 ///Raw socket
 pub struct Socket {
-    inner: SOCKET
+    inner: winapi::SOCKET
 }
 
 impl Socket {
@@ -156,8 +173,8 @@ impl Socket {
         });
 
         unsafe {
-            match socket(family, _type, protocol) {
-                INVALID_SOCKET => Err(io::Error::last_os_error()),
+            match winapi::socket(family, _type, protocol) {
+                winapi::INVALID_SOCKET => Err(io::Error::last_os_error()),
                 fd => Ok(Socket {
                     inner: fd
                 }),
@@ -168,7 +185,7 @@ impl Socket {
     ///Returns underlying socket descriptor.
     ///
     ///Note: ownership is not transferred.
-    pub fn raw(&self) -> SOCKET {
+    pub fn raw(&self) -> winapi::SOCKET {
         self.inner
     }
 
@@ -179,11 +196,11 @@ impl Socket {
     ///Available for binded/connected sockets.
     pub fn name(&self) -> io::Result<net::SocketAddr> {
         unsafe {
-            let mut storage: SOCKADDR_STORAGE_LH = mem::zeroed();
+            let mut storage: winapi::SOCKADDR_STORAGE_LH = mem::zeroed();
             let mut len = mem::size_of_val(&storage) as c_int;
 
-            match getsockname(self.inner, &mut storage as *mut _ as *mut _, &mut len) {
-                SOCKET_ERROR => Err(io::Error::last_os_error()),
+            match winapi::getsockname(self.inner, &mut storage as *mut _ as *mut _, &mut len) {
+                winapi::SOCKET_ERROR => Err(io::Error::last_os_error()),
                 _ => sockaddr_to_addr(&storage, len)
             }
         }
@@ -194,7 +211,7 @@ impl Socket {
         let (addr, len) = get_raw_addr(addr);
 
         unsafe {
-            match bind(self.inner, addr, len) {
+            match winapi::bind(self.inner, addr, len) {
                 0 => Ok(()),
                 _ => Err(io::Error::last_os_error())
             }
@@ -204,7 +221,7 @@ impl Socket {
     ///Listens for incoming connections on this socket.
     pub fn listen(&self, backlog: c_int) -> io::Result<()> {
         unsafe {
-            match listen(self.inner, backlog) {
+            match winapi::listen(self.inner, backlog) {
                 0 => Ok(()),
                 _ => Err(io::Error::last_os_error())
             }
@@ -217,12 +234,12 @@ impl Socket {
     pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
         let len = cmp::min(buf.len(), i32::max_value() as usize) as i32;
         unsafe {
-            match recv(self.inner, buf.as_mut_ptr() as *mut c_char, len, 0) {
+            match winapi::recv(self.inner, buf.as_mut_ptr() as *mut c_char, len, 0) {
                 -1 => {
                     let error = io::Error::last_os_error();
                     let raw_code = error.raw_os_error().unwrap();
 
-                    if raw_code == WSAESHUTDOWN as i32 {
+                    if raw_code == winapi::WSAESHUTDOWN as i32 {
                         Ok(0)
                     }
                     else {
@@ -240,15 +257,15 @@ impl Socket {
     pub fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, net::SocketAddr)> {
         let len = cmp::min(buf.len(), i32::max_value() as usize) as i32;
         unsafe {
-            let mut storage: SOCKADDR_STORAGE_LH = mem::zeroed();
+            let mut storage: winapi::SOCKADDR_STORAGE_LH = mem::zeroed();
             let mut storage_len = mem::size_of_val(&storage) as c_int;
 
-            match recvfrom(self.inner, buf.as_mut_ptr() as *mut c_char, len, 0, &mut storage as *mut _ as *mut _, &mut storage_len) {
+            match winapi::recvfrom(self.inner, buf.as_mut_ptr() as *mut c_char, len, 0, &mut storage as *mut _ as *mut _, &mut storage_len) {
                 -1 => {
                     let error = io::Error::last_os_error();
                     let raw_code = error.raw_os_error().unwrap();
 
-                    if raw_code == WSAESHUTDOWN as i32 {
+                    if raw_code == winapi::WSAESHUTDOWN as i32 {
                         let peer_addr = sockaddr_to_addr(&storage, storage_len)?;
                         Ok((0, peer_addr))
                     }
@@ -271,12 +288,12 @@ impl Socket {
         let len = cmp::min(buf.len(), i32::max_value() as usize) as i32;
 
         unsafe {
-            match send(self.inner, buf.as_ptr() as *const c_char, len, 0) {
+            match winapi::send(self.inner, buf.as_ptr() as *const c_char, len, 0) {
                 -1 => {
                     let error = io::Error::last_os_error();
                     let raw_code = error.raw_os_error().unwrap();
 
-                    if raw_code == WSAESHUTDOWN as i32 {
+                    if raw_code == winapi::WSAESHUTDOWN as i32 {
                         Ok(0)
                     }
                     else {
@@ -299,12 +316,12 @@ impl Socket {
         let (addr, addr_len) = get_raw_addr(peer_addr);
 
         unsafe {
-            match sendto(self.inner, buf.as_ptr() as *const c_char, len, 0, addr, addr_len) {
+            match winapi::sendto(self.inner, buf.as_ptr() as *const c_char, len, 0, addr, addr_len) {
                 -1 => {
                     let error = io::Error::last_os_error();
                     let raw_code = error.raw_os_error().unwrap();
 
-                    if raw_code == WSAESHUTDOWN as i32 {
+                    if raw_code == winapi::WSAESHUTDOWN as i32 {
                         Ok(0)
                     }
                     else {
@@ -319,11 +336,11 @@ impl Socket {
     ///Accepts incoming connection.
     pub fn accept(&self) -> io::Result<(Socket, net::SocketAddr)> {
         unsafe {
-            let mut storage: SOCKADDR_STORAGE_LH = mem::zeroed();
+            let mut storage: winapi::SOCKADDR_STORAGE_LH = mem::zeroed();
             let mut len = mem::size_of_val(&storage) as c_int;
 
-            match accept(self.inner, &mut storage as *mut _ as *mut _, &mut len) {
-                INVALID_SOCKET => Err(io::Error::last_os_error()),
+            match winapi::accept(self.inner, &mut storage as *mut _ as *mut _, &mut len) {
+                winapi::INVALID_SOCKET => Err(io::Error::last_os_error()),
                 sock @ _ => {
                     let addr = sockaddr_to_addr(&storage, len)?;
                     Ok((Socket { inner: sock, }, addr))
@@ -337,7 +354,7 @@ impl Socket {
         let (addr, len) = get_raw_addr(addr);
 
         unsafe {
-            match connect(self.inner, addr, len) {
+            match winapi::connect(self.inner, addr, len) {
                 0 => Ok(()),
                 _ => Err(io::Error::last_os_error())
             }
@@ -351,7 +368,7 @@ impl Socket {
             let value_ptr = &mut value as *mut T as *mut c_char;
             let mut value_len = mem::size_of::<T>() as c_int;
 
-            match getsockopt(self.inner, level, name, value_ptr, &mut value_len) {
+            match winapi::getsockopt(self.inner, level, name, value_ptr, &mut value_len) {
                 0 => Ok(value),
                 _ => Err(io::Error::last_os_error())
             }
@@ -365,7 +382,7 @@ impl Socket {
         unsafe {
             let value = &value as *const T as *const c_char;
 
-            match setsockopt(self.inner, level, name, value, mem::size_of::<T>() as c_int) {
+            match winapi::setsockopt(self.inner, level, name, value, mem::size_of::<T>() as c_int) {
                 0 => Ok(()),
                 _ => Err(io::Error::last_os_error())
             }
@@ -380,7 +397,7 @@ impl Socket {
             let mut value = value;
             let value = &mut value as *mut c_ulong;
 
-            match ioctlsocket(self.inner, request, value) {
+            match winapi::ioctlsocket(self.inner, request, value) {
                 0 => Ok(()),
                 _ => Err(io::Error::last_os_error())
             }
@@ -398,7 +415,7 @@ impl Socket {
     ///Stops receive and/or send over socket.
     pub fn shutdown(&self, direction: ShutdownType) -> io::Result<()> {
         unsafe {
-            match shutdown(self.inner, direction.into()) {
+            match winapi::shutdown(self.inner, direction.into()) {
                 0 => Ok(()),
                 _ => Err(io::Error::last_os_error())
             }
@@ -411,7 +428,7 @@ impl Socket {
     ///There is no need to close it explicitly.
     pub fn close(&self) -> io::Result<()> {
         unsafe {
-            match closesocket(self.inner) {
+            match winapi::closesocket(self.inner) {
                 0 => Ok(()),
                 _ => Err(io::Error::last_os_error())
             }
@@ -419,7 +436,7 @@ impl Socket {
     }
 }
 
-fn get_raw_addr(addr: &net::SocketAddr) -> (*const SOCKADDR, c_int) {
+fn get_raw_addr(addr: &net::SocketAddr) -> (*const winapi::SOCKADDR, c_int) {
     match *addr {
         net::SocketAddr::V4(ref a) => {
             (a as *const _ as *const _, mem::size_of_val(a) as c_int)
@@ -430,11 +447,11 @@ fn get_raw_addr(addr: &net::SocketAddr) -> (*const SOCKADDR, c_int) {
     }
 }
 
-fn sockaddr_to_addr(storage: &SOCKADDR_STORAGE_LH, len: c_int) -> io::Result<net::SocketAddr> {
+fn sockaddr_to_addr(storage: &winapi::SOCKADDR_STORAGE_LH, len: c_int) -> io::Result<net::SocketAddr> {
     match storage.ss_family as c_int {
-        AF_INET => {
-            assert!(len as usize >= mem::size_of::<sockaddr_in>());
-            let storage = unsafe { *(storage as *const _ as *const sockaddr_in) };
+        winapi::AF_INET => {
+            assert!(len as usize >= mem::size_of::<winapi::sockaddr_in>());
+            let storage = unsafe { *(storage as *const _ as *const winapi::sockaddr_in) };
             let ip = net::Ipv4Addr::new(storage.sin_addr.s_addr[0],
                                         storage.sin_addr.s_addr[1],
                                         storage.sin_addr.s_addr[2],
@@ -444,9 +461,9 @@ fn sockaddr_to_addr(storage: &SOCKADDR_STORAGE_LH, len: c_int) -> io::Result<net
             //As IP stuff is always BE, we need swap only on LE targets
             Ok(net::SocketAddr::V4(net::SocketAddrV4::new(ip, storage.sin_port.to_be())))
         }
-        AF_INET6 => {
-            assert!(len as usize >= mem::size_of::<sockaddr_in6>());
-            let storage = unsafe { *(storage as *const _ as *const sockaddr_in6) };
+        winapi::AF_INET6 => {
+            assert!(len as usize >= mem::size_of::<winapi::sockaddr_in6>());
+            let storage = unsafe { *(storage as *const _ as *const winapi::sockaddr_in6) };
             let ip = net::Ipv6Addr::new(storage.sin6_addr.s6_addr[0],
                                         storage.sin6_addr.s6_addr[1],
                                         storage.sin6_addr.s6_addr[2],
@@ -478,21 +495,64 @@ use std::os::windows::io::{
 };
 
 impl AsRawSocket for Socket {
-    fn as_raw_socket(&self) -> SOCKET {
+    fn as_raw_socket(&self) -> winapi::SOCKET {
         self.inner
     }
 }
 
 impl FromRawSocket for Socket {
-    unsafe fn from_raw_socket(sock: SOCKET) -> Self {
+    unsafe fn from_raw_socket(sock: winapi::SOCKET) -> Self {
         Socket {inner: sock}
     }
 }
 
 impl IntoRawSocket for Socket {
-    fn into_raw_socket(self) -> SOCKET {
+    fn into_raw_socket(self) -> winapi::SOCKET {
         let result = self.inner;
         mem::forget(self);
         result
+    }
+}
+
+#[inline]
+fn ms_to_timeval(timeout_ms: u64) -> winapi::timeval {
+    winapi::timeval {
+        tv_sec: timeout_ms as c_long / 1000,
+        tv_usec: (timeout_ms as c_long % 1000) * 1000
+    }
+}
+
+fn sockets_to_fd_set(sockets: &[&Socket]) -> winapi::FD_SET {
+    assert!(sockets.len() < winapi::FD_SETSIZE);
+    let mut raw_fds: winapi::FD_SET = unsafe { mem::zeroed() };
+
+    for socket in sockets {
+        let idx = raw_fds.fd_count as usize;
+        raw_fds.fd_array[idx] = socket.inner;
+        raw_fds.fd_count += 1;
+    }
+
+    raw_fds
+}
+
+///Wrapper over system `select`
+///
+///Returns number of sockets that are ready.
+///
+///If timeout isn't specified then select will be blocking call.
+///
+///**Note:** number of each set cannot be bigger than FD_SETSIZE i.e. 64
+pub fn select(read_fds: &[&Socket], write_fds: &[&Socket], except_fds: &[&Socket], timeout_ms: Option<u64>) -> io::Result<c_int> {
+    let mut raw_read_fds = sockets_to_fd_set(read_fds);
+    let mut raw_write_fds = sockets_to_fd_set(write_fds);
+    let mut raw_except_fds = sockets_to_fd_set(except_fds);
+
+    unsafe {
+        match winapi::select(0, &mut raw_read_fds, &mut raw_write_fds, &mut raw_except_fds,
+                             if let Some(timeout_ms) = timeout_ms { &ms_to_timeval(timeout_ms) } else { ptr::null() } ) {
+            winapi::SOCKET_ERROR => Err(io::Error::last_os_error()),
+            result @ _ => Ok(result)
+
+        }
     }
 }

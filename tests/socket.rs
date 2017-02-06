@@ -7,6 +7,7 @@ use std::net;
 use std::str::FromStr;
 use std::os::raw::*;
 use lazy_socket::raw::Socket;
+use std::time;
 
 #[test]
 fn socket_new_raw_icmp() {
@@ -238,4 +239,70 @@ fn socket_as_into_from_traits() {
 
     assert_eq!(raw_socket, socket.as_raw_fd());
     assert!(socket.close().is_ok());
+}
+
+#[test]
+fn socket_select_timeout() {
+    let timeout = 100;
+    #[cfg(windows)]
+    let would_block_errno = 10035;
+    #[cfg(unix)]
+    let would_block_errno = libc::EINPROGRESS;
+
+    let family: c_int = 2;
+    let ty: c_int = 1;
+    let proto: c_int = 6;
+    let server_addr = net::SocketAddr::from_str("222.0.0.1:60004").unwrap();
+
+    let client = Socket::new(family, ty, proto).unwrap();
+
+    assert!(client.set_nonblocking(true).is_ok());
+    let result = client.connect(&server_addr);
+    assert!(result.is_err()); //Non-blocking connect returns error
+    assert_eq!(result.err().unwrap().raw_os_error().unwrap(), would_block_errno);
+
+    let now = time::Instant::now();
+    let result = lazy_socket::raw::select(&[], &[&client], &[&client], Some(timeout));
+    let elapsed = now.elapsed();
+
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), 0);
+    let elapsed = elapsed.as_secs() / 1000 + elapsed.subsec_nanos() as u64 / 1000000;
+    assert!(elapsed >= (timeout - 50) || elapsed <= (timeout + 50));
+}
+
+#[test]
+fn socket_select_connect() {
+    #[cfg(windows)]
+    let would_block_errno = 10035;
+    #[cfg(unix)]
+    let would_block_errno = libc::EINPROGRESS;
+
+    let family: c_int = 2;
+    let ty: c_int = 1;
+    let proto: c_int = 6;
+    let server_addr = net::SocketAddr::from_str("127.0.0.1:60006").unwrap();
+
+    let server = Socket::new(family, ty, proto).unwrap();
+    assert!(server.bind(&server_addr).is_ok());
+    assert!(server.listen(1).is_ok());
+
+    let client = Socket::new(family, ty, proto).unwrap();
+
+    let th = thread::spawn(move || {
+        let result = server.accept();
+        assert!(result.is_ok());
+    });
+
+    assert!(client.set_nonblocking(true).is_ok());
+    let result = client.connect(&server_addr);
+    assert!(result.is_err()); //Non-blocking connect returns error
+    println!("result={:?}", result);
+    assert_eq!(result.err().unwrap().raw_os_error().unwrap(), would_block_errno);
+
+    let result = lazy_socket::raw::select(&[], &[&client], &[&client], None);
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), 1);
+
+    assert!(th.join().is_ok());
 }

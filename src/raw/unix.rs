@@ -2,8 +2,9 @@ use std::net;
 use std::io;
 use std::mem;
 use std::cmp;
+use std::ptr;
 
-mod c {
+mod libc {
     extern crate libc;
 
     //Types
@@ -19,7 +20,11 @@ mod c {
         sockaddr,
         sockaddr_storage,
         sa_family_t,
-        in_port_t
+        in_port_t,
+        fd_set,
+        timeval,
+        time_t,
+        suseconds_t
     };
 
     #[repr(C)]
@@ -80,11 +85,13 @@ mod c {
         setsockopt,
         ioctl,
         shutdown,
-        close
+        close,
+        select,
+        FD_SET
     };
 }
 
-use self::c::*;
+use self::libc::*;
 
 ///Type of socket's shutdown operation.
 #[derive(Copy, Clone)]
@@ -429,5 +436,54 @@ impl IntoRawFd for Socket {
         let result = self.inner;
         mem::forget(self);
         result
+    }
+}
+
+#[inline]
+fn ms_to_timeval(timeout_ms: u64) -> timeval {
+    timeval {
+        tv_sec: timeout_ms as time_t / 1000,
+        tv_usec: (timeout_ms as suseconds_t % 1000) * 1000
+    }
+}
+
+fn sockets_to_fd_set(sockets: &[&Socket]) -> (c_int, fd_set) {
+    let mut max_fd: c_int = 0;
+    let mut raw_fds: fd_set = unsafe { mem::zeroed() };
+
+    for socket in sockets {
+        max_fd = cmp::max(max_fd, socket.inner);
+        unsafe {
+            FD_SET(socket.inner, &mut raw_fds);
+        }
+    }
+
+    (max_fd, raw_fds)
+}
+
+///Wrapper over system `select`
+///
+///Returns number of sockets that are ready.
+///
+///If timeout isn't specified then select will be a blocking call.
+///
+///**Note:** number of each set cannot be bigger than FD_SETSIZE i.e. 64
+pub fn select(read_fds: &[&Socket], write_fds: &[&Socket], except_fds: &[&Socket], timeout_ms: Option<u64>) -> io::Result<c_int> {
+    let (max_read_fd, mut raw_read_fds) = sockets_to_fd_set(read_fds);
+    let (max_write_fd, mut raw_write_fds) = sockets_to_fd_set(write_fds);
+    let (max_except_fd, mut raw_except_fds) = sockets_to_fd_set(except_fds);
+
+    let nfds = cmp::max(max_read_fd, cmp::max(max_write_fd, max_except_fd)) + 1;
+
+    unsafe {
+        match libc::select(nfds,
+                           if max_read_fd > 0 { &mut raw_read_fds } else { ptr::null_mut() },
+                           if max_write_fd > 0 { &mut raw_write_fds } else { ptr::null_mut() },
+                           if max_except_fd > 0 { &mut raw_except_fds } else { ptr::null_mut() },
+                           if let Some(timeout_ms) = timeout_ms { &mut ms_to_timeval(timeout_ms) } else { ptr::null_mut() } ) {
+            SOCKET_ERROR => Err(io::Error::last_os_error()),
+            result @ _ => Ok(result)
+
+        }
     }
 }
