@@ -152,7 +152,7 @@ macro_rules! impl_into_trait {
 #[allow(non_snake_case)]
 ///Socket family
 pub mod Family {
-    use super::winapi::c_int
+    use std::os::raw::c_int;
     pub const UNSPECIFIED: c_int = 0;
     pub const IPV4: c_int = 2;
     pub const IPV6: c_int = 23;
@@ -163,7 +163,7 @@ pub mod Family {
 #[allow(non_snake_case)]
 ///Socket type
 pub mod Type {
-    use super::winapi::c_int
+    use std::os::raw::c_int;
     pub const STREAM: c_int = 1;
     pub const DATAGRAM: c_int = 2;
     pub const RAW: c_int = 3;
@@ -174,7 +174,7 @@ pub mod Type {
 #[allow(non_snake_case)]
 ///Socket protocol
 pub mod Protocol {
-    use super::winapi::c_int
+    use std::os::raw::c_int;
     pub const NONE: c_int = 0;
     pub const ICMP: c_int = 1;
     pub const TCP: c_int = 6;
