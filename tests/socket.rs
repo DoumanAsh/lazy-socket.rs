@@ -6,18 +6,15 @@ use std::thread;
 use std::net;
 use std::str::FromStr;
 use std::os::raw::*;
-use lazy_socket::raw::Socket;
+use lazy_socket::raw::*;
 use std::time;
 
 #[test]
 fn socket_new_raw_icmp() {
     //Test requires admin privileges.
-    let family: c_int = 2;
-    let ty: c_int = 3;
-    let proto: c_int = 1;
     let addr = net::SocketAddr::from_str("0.0.0.0:0").unwrap();
 
-    let socket = Socket::new(family, ty, proto);
+    let socket = Socket::new(Family::IPV4, Type::RAW, Protocol::ICMP);
 
     if let Err(error) = socket {
         let error_code = error.raw_os_error().unwrap();
@@ -48,9 +45,9 @@ fn socket_new_raw_icmp() {
 
 #[test]
 fn socket_test_udp() {
-    let family: c_int = 2;
-    let ty: c_int = 2;
-    let proto: c_int = 17;
+    let family = Family::IPV4;
+    let ty = Type::DATAGRAM;
+    let proto = Protocol::UDP;
     let data = [1, 2, 3, 4];
     let addr = net::SocketAddr::from_str("127.0.0.1:1666").unwrap();
 
@@ -108,9 +105,9 @@ fn socket_test_udp() {
 
 #[test]
 fn socket_test_tcp() {
-    let family: c_int = 2;
-    let ty: c_int = 1;
-    let proto: c_int = 6;
+    let family = Family::IPV4;
+    let ty = Type::STREAM;
+    let proto = Protocol::TCP;
     let data = [1, 2, 3, 4];
     let server_addr = net::SocketAddr::from_str("127.0.0.1:60000").unwrap();
     let client_addr = net::SocketAddr::from_str("127.0.0.1:65003").unwrap();
@@ -152,10 +149,6 @@ fn socket_test_tcp() {
 #[test]
 fn socket_test_options() {
     let value_true: c_int = 1;
-    let family: c_int = 2;
-    let ty: c_int = 1;
-    let proto: c_int = 6;
-
     #[cfg(windows)]
     let level: c_int = 0xffff; //SOL_SOCKET
     #[cfg(unix)]
@@ -165,7 +158,7 @@ fn socket_test_options() {
     #[cfg(unix)]
     let name: c_int = libc::SO_REUSEADDR; //SO_REUSEADDR
 
-    let socket = Socket::new(family, ty, proto).unwrap();
+    let socket = Socket::new(Family::IPV4, Type::STREAM, Protocol::TCP).unwrap();
 
     let result = socket.get_opt::<c_int>(level, name);
     assert!(result.is_ok());
@@ -198,14 +191,10 @@ fn socket_as_into_from_traits() {
         IntoRawSocket,
     };
 
-    let family: c_int = 2;
-    let ty: c_int = 1;
-    let proto: c_int = 6;
-
     let raw_socket;
 
     {
-        let socket = Socket::new(family, ty, proto).unwrap();
+        let socket = Socket::new(Family::IPV4, Type::STREAM, Protocol::TCP).unwrap();
         raw_socket = socket.into_raw_socket();
     }
 
@@ -224,14 +213,10 @@ fn socket_as_into_from_traits() {
         IntoRawFd,
     };
 
-    let family: c_int = 2;
-    let ty: c_int = 1;
-    let proto: c_int = 6;
-
     let raw_socket;
 
     {
-        let socket = Socket::new(family, ty, proto).unwrap();
+        let socket = Socket::new(Family::IPV4, Type::STREAM, Protocol::TCP).unwrap();
         raw_socket = socket.into_raw_fd();
     }
 
@@ -249,12 +234,9 @@ fn socket_select_timeout() {
     #[cfg(unix)]
     let would_block_errno = libc::EINPROGRESS;
 
-    let family: c_int = 2;
-    let ty: c_int = 1;
-    let proto: c_int = 6;
     let server_addr = net::SocketAddr::from_str("222.0.0.1:60004").unwrap();
 
-    let client = Socket::new(family, ty, proto).unwrap();
+    let client = Socket::new(Family::IPV4, Type::STREAM, Protocol::TCP).unwrap();
 
     assert!(client.set_nonblocking(true).is_ok());
     let result = client.connect(&server_addr);
@@ -278,14 +260,14 @@ fn socket_select_connect() {
     #[cfg(unix)]
     let would_block_errno = libc::EINPROGRESS;
 
-    let family: c_int = 2;
-    let ty: c_int = 1;
-    let proto: c_int = 6;
+    let family = Family::IPV4;
+    let ty = Type::STREAM;
+    let proto = Protocol::TCP;
     let server_addr = net::SocketAddr::from_str("127.0.0.1:60006").unwrap();
 
     let server = Socket::new(family, ty, proto).unwrap();
     assert!(server.bind(&server_addr).is_ok());
-    assert!(server.listen(1).is_ok());
+    assert!(server.listen(0).is_ok());
 
     let client = Socket::new(family, ty, proto).unwrap();
 
@@ -297,7 +279,6 @@ fn socket_select_connect() {
     assert!(client.set_nonblocking(true).is_ok());
     let result = client.connect(&server_addr);
     assert!(result.is_err()); //Non-blocking connect returns error
-    println!("result={:?}", result);
     assert_eq!(result.err().unwrap().raw_os_error().unwrap(), would_block_errno);
 
     let result = lazy_socket::raw::select(&[], &[&client], &[&client], None);

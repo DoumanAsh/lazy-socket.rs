@@ -64,8 +64,18 @@ mod libc {
 
     //Constants
     pub use self::libc::{
+        AF_UNSPEC,
+        AF_UNIX,
         AF_INET,
         AF_INET6,
+        AF_NETLINK,
+        AF_PACKET,
+        SOCK_STREAM,
+        SOCK_DGRAM,
+        SOCK_RAW,
+        SOCK_SEQPACKET,
+        SOCK_NONBLOCK,
+        SOCK_CLOEXEC,
         FIONBIO
     };
 
@@ -93,8 +103,57 @@ mod libc {
 
 use self::libc::*;
 
-///Type of socket's shutdown operation.
+macro_rules! impl_into_trait {
+    ($($t:ty), +) => {
+        $(
+            impl Into<c_int> for $t {
+                fn into(self) -> c_int {
+                    self as c_int
+                }
+            }
+        )+
+    };
+}
+
+#[allow(non_snake_case)]
+///Socket family
+pub mod Family {
+    use super::libc::*;
+    pub const UNSPECIFIED: c_int = AF_UNSPEC;
+    pub const UNIX: c_int = AF_UNIX;
+    pub const IPV4: c_int = AF_INET;
+    pub const IPV6: c_int = AF_INET6;
+    pub const NETLINK: c_int = AF_NETLINK;
+    pub const PACKET: c_int = AF_PACKET;
+}
+
+#[allow(non_snake_case)]
+///Socket type
+pub mod Type {
+    use super::libc::*;
+    pub const STREAM: c_int = SOCK_STREAM;
+    pub const DATAGRAM: c_int = SOCK_DGRAM;
+    pub const RAW: c_int = SOCK_RAW;
+    pub const SEQPACKET: c_int = SOCK_SEQPACKET;
+    ///Applied through bitwise OR
+    pub const NONBLOCK: c_int = SOCK_NONBLOCK;
+    ///Applied through bitwise OR
+    pub const CLOEXEC: c_int = SOCK_CLOEXEC;
+}
+
+#[allow(non_snake_case)]
+///Socket protocol
+pub mod Protocol {
+    use super::libc::*;
+    pub const NONE: c_int = 0;
+    pub const ICMP: c_int = 1;
+    pub const TCP: c_int = 6;
+    pub const UDP: c_int = 17;
+    pub const ICMPV6: c_int = 58;
+}
+
 #[derive(Copy, Clone)]
+///Type of socket's shutdown operation.
 pub enum ShutdownType {
     ///Stops any further receives.
     Receive = 0,
@@ -104,11 +163,7 @@ pub enum ShutdownType {
     Both = 2
 }
 
-impl Into<c_int> for ShutdownType {
-    fn into(self) -> c_int {
-        self as c_int
-    }
-}
+impl_into_trait!(ShutdownType);
 
 ///Raw socket
 pub struct Socket {

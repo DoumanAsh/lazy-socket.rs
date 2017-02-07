@@ -4,6 +4,7 @@ use std::net;
 use std::mem;
 use std::cmp;
 use std::ptr;
+use std::sync::{Once, ONCE_INIT};
 
 //WinAPI Start
 mod winapi {
@@ -136,10 +137,53 @@ mod winapi {
     }
 }
 
-use std::sync::{Once, ONCE_INIT};
+macro_rules! impl_into_trait {
+    ($($t:ty), +) => {
+        $(
+            impl Into<c_int> for $t {
+                fn into(self) -> c_int {
+                    self as c_int
+                }
+            }
+        )+
+    };
+}
 
-///Type of socket's shutdown operation.
+#[allow(non_snake_case)]
+///Socket family
+pub mod Family {
+    use super::winapi::c_int
+    pub const UNSPECIFIED: c_int = 0;
+    pub const IPV4: c_int = 2;
+    pub const IPV6: c_int = 23;
+    pub const IRDA: c_int = 26;
+    pub const BTH: c_int = 32;
+}
+
+#[allow(non_snake_case)]
+///Socket type
+pub mod Type {
+    use super::winapi::c_int
+    pub const STREAM: c_int = 1;
+    pub const DATAGRAM: c_int = 2;
+    pub const RAW: c_int = 3;
+    pub const RDM: c_int = 4;
+    pub const SEQPACKET: c_int = 5;
+}
+
+#[allow(non_snake_case)]
+///Socket protocol
+pub mod Protocol {
+    use super::winapi::c_int
+    pub const NONE: c_int = 0;
+    pub const ICMP: c_int = 1;
+    pub const TCP: c_int = 6;
+    pub const UDP: c_int = 17;
+    pub const ICMPV6: c_int = 58;
+}
+
 #[derive(Copy, Clone)]
+///Type of socket's shutdown operation.
 pub enum ShutdownType {
     ///Stops any further receives.
     Receive = 0,
@@ -149,11 +193,7 @@ pub enum ShutdownType {
     Both = 2
 }
 
-impl Into<c_int> for ShutdownType {
-    fn into(self) -> c_int {
-        self as c_int
-    }
-}
+impl_into_trait!(ShutdownType);
 
 ///Raw socket
 pub struct Socket {
