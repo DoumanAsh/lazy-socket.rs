@@ -64,6 +64,25 @@ mod libc {
 
     //Constants
     pub use self::libc::{
+        FIONBIO
+    };
+
+    #[cfg(target_os = "macos")]
+    pub use self::libc::{
+        AF_UNIX,
+        AF_INET,
+        AF_INET6,
+        SOCK_STREAM,
+        SOCK_DGRAM,
+        SOCK_RAW,
+        SOCK_SEQPACKET,
+    };
+
+    #[cfg(target_os = "macos")]
+    pub const AF_UNSPEC: c_int = 0;
+
+    #[cfg(not(target_os = "macos"))]
+    pub use self::libc::{
         AF_UNSPEC,
         AF_UNIX,
         AF_INET,
@@ -75,8 +94,7 @@ mod libc {
         SOCK_RAW,
         SOCK_SEQPACKET,
         SOCK_NONBLOCK,
-        SOCK_CLOEXEC,
-        FIONBIO
+        SOCK_CLOEXEC
     };
 
     //Functions
@@ -123,7 +141,9 @@ pub mod Family {
     pub const UNIX: c_int = AF_UNIX;
     pub const IPV4: c_int = AF_INET;
     pub const IPV6: c_int = AF_INET6;
+    #[cfg(not(target_os = "macos"))]
     pub const NETLINK: c_int = AF_NETLINK;
+    #[cfg(not(target_os = "macos"))]
     pub const PACKET: c_int = AF_PACKET;
 }
 
@@ -135,8 +155,10 @@ pub mod Type {
     pub const DATAGRAM: c_int = SOCK_DGRAM;
     pub const RAW: c_int = SOCK_RAW;
     pub const SEQPACKET: c_int = SOCK_SEQPACKET;
+    #[cfg(not(target_os = "macos"))]
     ///Applied through bitwise OR
     pub const NONBLOCK: c_int = SOCK_NONBLOCK;
+    #[cfg(not(target_os = "macos"))]
     ///Applied through bitwise OR
     pub const CLOEXEC: c_int = SOCK_CLOEXEC;
 }
