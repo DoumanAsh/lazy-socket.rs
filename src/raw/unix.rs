@@ -256,10 +256,10 @@ impl Socket {
     ///Receives some bytes from socket
     ///
     ///Number of received bytes is returned on success
-    pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
+    pub fn recv(&self, buf: &mut [u8], flags: c_int) -> io::Result<usize> {
         let len = cmp::min(buf.len(), i32::max_value() as usize) as size_t;
         unsafe {
-            match recv(self.inner, buf.as_mut_ptr() as *mut c_void, len, 0) {
+            match recv(self.inner, buf.as_mut_ptr() as *mut c_void, len, flags) {
                 -1 => Err(io::Error::last_os_error()),
                 n => Ok(n as usize)
             }
@@ -269,13 +269,13 @@ impl Socket {
     ///Receives some bytes from socket
     ///
     ///Number of received bytes and remote address are returned on success.
-    pub fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, net::SocketAddr)> {
+    pub fn recv_from(&self, buf: &mut [u8], flags: c_int) -> io::Result<(usize, net::SocketAddr)> {
         let len = cmp::min(buf.len(), i32::max_value() as usize) as size_t;
         unsafe {
             let mut storage: sockaddr_storage = mem::zeroed();
             let mut storage_len = mem::size_of_val(&storage) as socklen_t;
 
-            match recvfrom(self.inner, buf.as_mut_ptr() as *mut c_void, len, 0, &mut storage as *mut _ as *mut _, &mut storage_len) {
+            match recvfrom(self.inner, buf.as_mut_ptr() as *mut c_void, len, flags, &mut storage as *mut _ as *mut _, &mut storage_len) {
                 -1 => Err(io::Error::last_os_error()),
                 n => {
                     let peer_addr = sockaddr_to_addr(&storage, storage_len)?;
@@ -288,11 +288,11 @@ impl Socket {
     ///Sends some bytes through socket.
     ///
     ///Number of sent bytes is returned.
-    pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
+    pub fn send(&self, buf: &[u8], flags: c_int) -> io::Result<usize> {
         let len = cmp::min(buf.len(), i32::max_value() as usize) as size_t;
 
         unsafe {
-            match send(self.inner, buf.as_ptr() as *const c_void, len, 0) {
+            match send(self.inner, buf.as_ptr() as *const c_void, len, flags) {
                 -1 => {
                     let error = io::Error::last_os_error();
                     let raw_code = error.raw_os_error().unwrap();
@@ -315,12 +315,12 @@ impl Socket {
     ///
     ///Note: the socket will be bound, if it isn't already.
     ///Use method `name` to determine address.
-    pub fn send_to(&self, buf: &[u8], peer_addr: &net::SocketAddr) -> io::Result<usize> {
+    pub fn send_to(&self, buf: &[u8], peer_addr: &net::SocketAddr, flags: c_int) -> io::Result<usize> {
         let len = cmp::min(buf.len(), i32::max_value() as usize) as size_t;
         let (addr, addr_len) = get_raw_addr(peer_addr);
 
         unsafe {
-            match sendto(self.inner, buf.as_ptr() as *const c_void, len, 0, addr, addr_len) {
+            match sendto(self.inner, buf.as_ptr() as *const c_void, len, flags, addr, addr_len) {
                 -1 => {
                     let error = io::Error::last_os_error();
                     let raw_code = error.raw_os_error().unwrap();
@@ -352,6 +352,7 @@ impl Socket {
             }
         }
     }
+    
 
     ///Connects socket with remote address.
     pub fn connect(&self, addr: &net::SocketAddr) -> io::Result<()> {
@@ -394,8 +395,6 @@ impl Socket {
     }
 
     ///Sets I/O parameters of socket.
-    ///
-    ///It uses `ioctlsocket` under hood.
     pub fn ioctl(&self, request: c_ulong, value: c_ulong) -> io::Result<()> {
         unsafe {
             let mut value = value;

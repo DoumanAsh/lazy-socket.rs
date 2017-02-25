@@ -60,7 +60,7 @@ fn socket_test_udp() {
     assert!(client.bind(&net::SocketAddr::from_str("127.0.0.1:5666").unwrap()).is_ok());
     let client_addr = client.name().unwrap();
 
-    let result = client.send_to(&data, &addr);
+    let result = client.send_to(&data, &addr, 0);
     assert!(result.is_ok());
     let result = result.unwrap();
     assert_eq!(result, data.len());
@@ -68,7 +68,7 @@ fn socket_test_udp() {
     let mut read_data = [0; 10];
 
     // recv_from
-    let result = server.recv_from(&mut read_data);
+    let result = server.recv_from(&mut read_data, 0);
     assert!(result.is_ok());
     let (result_len, result_addr) = result.unwrap();
 
@@ -78,24 +78,24 @@ fn socket_test_udp() {
     assert_eq!(&read_data[..result_len], data);
 
     // 2 send + 2 recv
-    let result = client.send_to(&data, &addr);
+    let result = client.send_to(&data, &addr, 0);
     assert!(result.is_ok());
     let result = result.unwrap();
     assert_eq!(result, data.len());
 
-    let result = client.send_to(&data, &addr);
+    let result = client.send_to(&data, &addr, 0);
     assert!(result.is_ok());
     let result = result.unwrap();
     assert_eq!(result, data.len());
 
-    let result = server.recv(&mut read_data);
+    let result = server.recv(&mut read_data, 0);
     assert!(result.is_ok());
     let result_len = result.unwrap();
     assert_eq!(result_len, data.len());
     assert_eq!(read_data[result_len], 0);
     assert_eq!(&read_data[..result_len], data);
 
-    let result = server.recv(&mut read_data);
+    let result = server.recv(&mut read_data, 0);
     assert!(result.is_ok());
     let result_len = result.unwrap();
     assert_eq!(result_len, data.len());
@@ -131,7 +131,7 @@ fn socket_test_tcp() {
         assert_eq!(result_addr, client_addr);
 
         let mut buf = [0; 10];
-        let result = result_socket.recv(&mut buf);
+        let result = result_socket.recv(&mut buf, 0);
         assert!(result.is_ok());
         let result_len = result.unwrap();
         assert_eq!(result_len, data.len());
@@ -141,7 +141,7 @@ fn socket_test_tcp() {
 
     let result = client.connect(&server_addr);
     assert!(result.is_ok());
-    assert!(client.send(&data).is_ok());
+    assert!(client.send(&data, 0).is_ok());
 
     assert!(th.join().is_ok());
 }
