@@ -133,14 +133,14 @@ macro_rules! impl_into_trait {
     };
 }
 
-#[allow(non_snake_case)]
+#[allow(non_snake_case, non_upper_case_globals)]
 ///Socket family
 pub mod Family {
     use super::libc::*;
     pub const UNSPECIFIED: c_int = AF_UNSPEC;
     pub const UNIX: c_int = AF_UNIX;
-    pub const IPV4: c_int = AF_INET;
-    pub const IPV6: c_int = AF_INET6;
+    pub const IPv4: c_int = AF_INET;
+    pub const IPv6: c_int = AF_INET6;
     #[cfg(not(target_os = "macos"))]
     pub const NETLINK: c_int = AF_NETLINK;
     #[cfg(not(target_os = "macos"))]
@@ -163,17 +163,18 @@ pub mod Type {
     pub const CLOEXEC: c_int = SOCK_CLOEXEC;
 }
 
-#[allow(non_snake_case)]
+#[allow(non_snake_case, non_upper_case_globals)]
 ///Socket protocol
 pub mod Protocol {
     use super::libc::*;
     pub const NONE: c_int = 0;
-    pub const ICMP: c_int = 1;
+    pub const ICMPv4: c_int = 1;
     pub const TCP: c_int = 6;
     pub const UDP: c_int = 17;
-    pub const ICMPV6: c_int = 58;
+    pub const ICMPv6: c_int = 58;
 }
 
+#[repr(i32)]
 #[derive(Copy, Clone)]
 ///Type of socket's shutdown operation.
 pub enum ShutdownType {

@@ -12,3 +12,7 @@ keywords = ["socket"]
 
 [target."cfg(unix)".dependencies]
 libc = "^0.2.20"
+
+[target."cfg(windows)".dependencies]
+winapi     = "^0.2.8"
+ws2_32-sys = "^0.2.1"

@@ -6,136 +6,94 @@ use std::cmp;
 use std::ptr;
 use std::sync::{Once, ONCE_INIT};
 
-//WinAPI Start
 mod winapi {
     #![allow(bad_style)]
     #![allow(dead_code)]
 
-    use std::os::raw::*;
+    extern crate winapi;
 
     pub type SOCKET = ::std::os::windows::io::RawSocket;
-    pub type DWORD = c_ulong;
-    pub type WORD = c_ushort;
-    pub type GROUP = c_uint;
-    pub type CHAR = c_char;
-    pub type USHORT = c_ushort;
-    pub type ADDRESS_FAMILY = USHORT;
-    pub const INVALID_SOCKET: SOCKET = !0;
-    pub const SOCKET_ERROR: c_int = -1;
-    pub const AF_INET: c_int = 2;
-    pub const AF_INET6: c_int = 23;
-    pub const WSAESHUTDOWN: DWORD = 10058;
-    pub const FD_SETSIZE: usize = 64;
 
-    pub const WSADESCRIPTION_LEN: usize = 256;
-    pub const WSASYS_STATUS_LEN: usize = 128;
-    #[repr(C)] #[derive(Copy)]
-    pub struct WSADATA {
-        pub wVersion: WORD,
-        pub wHighVersion: WORD,
-        #[cfg(target_arch="x86")]
-        pub szDescription: [c_char; WSADESCRIPTION_LEN + 1],
-        #[cfg(target_arch="x86")]
-        pub szSystemStatus: [c_char; WSASYS_STATUS_LEN + 1],
-        pub iMaxSockets: c_ushort,
-        pub iMaxUdpDg: c_ushort,
-        pub lpVendorInfo: *mut c_char,
-        #[cfg(target_arch="x86_64")]
-        pub szDescription: [c_char; WSADESCRIPTION_LEN + 1],
-        #[cfg(target_arch="x86_64")]
-        pub szSystemStatus: [c_char; WSASYS_STATUS_LEN + 1],
-    }
+	pub use self::winapi::{
+		ADDRESS_FAMILY,
+		DWORD,
+		WORD,
+		GROUP,
+		CHAR,
+		USHORT
+	};
 
-    #[repr(C)] #[derive(Copy)]
-    pub struct FD_SET {
-        pub fd_count: c_uint,
-        pub fd_array: [SOCKET; FD_SETSIZE],
-    }
+    pub use self::winapi::{
+        INVALID_SOCKET,
+        SOCKET_ERROR,
+        FIONBIO,
 
-    impl Clone for FD_SET {
-        fn clone(&self) -> FD_SET { *self }
-    }
+        AF_UNSPEC,
+        AF_INET,
+        AF_INET6,
+        AF_IRDA,
+        AF_BTH,
 
-    impl Clone for WSADATA {
-        fn clone(&self) -> WSADATA { *self }
-    }
+        SOCK_STREAM,
+        SOCK_DGRAM,
+        SOCK_RAW,
+        SOCK_RDM,
+        SOCK_SEQPACKET,
 
-    #[repr(C)] #[derive(Clone, Copy)]
-    pub struct timeval {
-        pub tv_sec: c_long,
-        pub tv_usec: c_long,
-    }
+        IPPROTO_NONE,
+        IPPROTO_ICMP,
+        IPPROTO_TCP,
+        IPPROTO_UDP,
+        IPPROTO_ICMPV6,
 
-    #[repr(C)]
-    pub struct SOCKADDR_STORAGE_LH {
-        pub ss_family: ADDRESS_FAMILY,
-        pub __ss_pad1: [CHAR; 6],
-        pub __ss_align: i64,
-        pub __ss_pad2: [CHAR; 112],
-    }
+        WSAESHUTDOWN,
+        WSAEINVAL,
 
-    #[repr(C)]
-    #[derive(Copy, Clone)]
-    pub struct in_addr {
-        pub s_addr: [u8; 4],
-    }
+        FD_SETSIZE,
+        WSADESCRIPTION_LEN,
+        WSASYS_STATUS_LEN
+    };
 
-    #[repr(C)]
-    #[derive(Copy, Clone)]
-    pub struct in6_addr {
-        pub s6_addr: [u16; 8],
-    }
+    pub use self::winapi::{
+        WSADATA,
+        fd_set,
+        timeval,
+        SOCKADDR_STORAGE_LH,
+        in_addr,
+        in6_addr,
+        SOCKADDR_IN,
+        sockaddr_in6,
+        SOCKADDR,
+        LPWSADATA
+    };
 
-    #[repr(C)]
-    #[derive(Copy, Clone)]
-    pub struct sockaddr_in {
-        pub sin_family: ADDRESS_FAMILY,
-        pub sin_port: USHORT,
-        pub sin_addr: in_addr,
-        pub sin_zero: [CHAR; 8],
-    }
 
-    #[repr(C)]
-    #[derive(Copy, Clone)]
-    pub struct sockaddr_in6 {
-        pub sin6_family: ADDRESS_FAMILY,
-        pub sin6_port: USHORT,
-        pub sin6_flowinfo: c_ulong,
-        pub sin6_addr: in6_addr,
-        pub sin6_scope_id: c_ulong,
-    }
 
-    #[repr(C)]
-    #[derive(Copy, Clone)]
-    pub struct SOCKADDR {
-        pub sa_family: ADDRESS_FAMILY,
-        pub sa_data: [CHAR; 14],
-    }
+    extern crate ws2_32;
 
-    pub type LPWSADATA = *mut WSADATA;
+    pub use self::ws2_32::{
+        WSAStartup,
+        WSACleanup,
 
-    extern "system" {
-        pub fn WSAStartup(wVersionRequested: WORD, lpWSAData: LPWSADATA) -> c_int;
-        pub fn WSACleanup() -> c_int;
-
-        pub fn getsockname(s: SOCKET, name: *mut SOCKADDR, namelen: *mut c_int) -> c_int;
-        pub fn socket(af: c_int, _type: c_int, protocol: c_int) -> SOCKET;
-        pub fn bind(s: SOCKET, name: *const SOCKADDR, namelen: c_int) -> c_int;
-        pub fn listen(s: SOCKET, backlog: c_int) -> c_int;
-        pub fn accept(s: SOCKET, addr: *mut SOCKADDR, addrlen: *mut c_int) -> SOCKET;
-        pub fn connect(s: SOCKET, name: *const SOCKADDR, namelen: c_int) -> c_int;
-        pub fn recv(s: SOCKET, buf: *mut c_char, len: c_int, flags: c_int) -> c_int;
-        pub fn recvfrom(s: SOCKET, buf: *mut c_char, len: c_int, flags: c_int, from: *mut SOCKADDR, fromlen: *mut c_int) -> c_int;
-        pub fn send(s: SOCKET, buf: *const c_char, len: c_int, flags: c_int) -> c_int;
-        pub fn sendto(s: SOCKET, buf: *const c_char, len: c_int, flags: c_int, to: *const SOCKADDR, tolen: c_int) -> c_int;
-        pub fn getsockopt(s: SOCKET, level: c_int, optname: c_int, optval: *mut c_char, optlen: *mut c_int) -> c_int;
-        pub fn setsockopt(s: SOCKET, level: c_int, optname: c_int, optval: *const c_char, optlen: c_int) -> c_int;
-        pub fn ioctlsocket(s: SOCKET, cmd: c_long, argp: *mut c_ulong) -> c_int;
-        pub fn shutdown(s: SOCKET, how: c_int) -> c_int;
-        pub fn closesocket(s: SOCKET) -> c_int;
-        pub fn select(nfds: c_int, readfds: *mut FD_SET, writefds: *mut FD_SET, exceptfds: *mut FD_SET, timeout: *const timeval) -> c_int;
-    }
+        getsockname,
+        socket,
+        bind,
+        listen,
+        accept,
+        connect,
+        recv,
+        recvfrom,
+        send,
+        sendto,
+        getsockopt,
+        setsockopt,
+        ioctlsocket,
+        shutdown,
+        closesocket,
+        select
+    };
 }
+
 
 macro_rules! impl_into_trait {
     ($($t:ty), +) => {
@@ -149,39 +107,45 @@ macro_rules! impl_into_trait {
     };
 }
 
-#[allow(non_snake_case)]
+
+#[allow(non_snake_case, non_upper_case_globals)]
 ///Socket family
 pub mod Family {
-    use std::os::raw::c_int;
-    pub const UNSPECIFIED: c_int = 0;
-    pub const IPV4: c_int = 2;
-    pub const IPV6: c_int = 23;
-    pub const IRDA: c_int = 26;
-    pub const BTH: c_int = 32;
+    use super::{c_int, winapi};
+
+    pub const UNSPECIFIED: c_int = winapi::AF_UNSPEC;
+    
+    pub const IPv4: c_int = winapi::AF_INET;
+    pub const IPv6: c_int = winapi::AF_INET6;
+    pub const IRDA: c_int = winapi::AF_IRDA;
+    pub const BTH:  c_int = winapi::AF_BTH;
 }
 
 #[allow(non_snake_case)]
 ///Socket type
 pub mod Type {
-    use std::os::raw::c_int;
-    pub const STREAM: c_int = 1;
-    pub const DATAGRAM: c_int = 2;
-    pub const RAW: c_int = 3;
-    pub const RDM: c_int = 4;
-    pub const SEQPACKET: c_int = 5;
+    use super::{c_int, winapi};
+
+    pub const STREAM:    c_int = winapi::SOCK_STREAM;
+    pub const DATAGRAM:  c_int = winapi::SOCK_DGRAM;
+    pub const RAW:       c_int = winapi::SOCK_RAW;
+    pub const RDM:       c_int = winapi::SOCK_RDM;
+    pub const SEQPACKET: c_int = winapi::SOCK_SEQPACKET;
 }
 
-#[allow(non_snake_case)]
+#[allow(non_snake_case, non_upper_case_globals)]
 ///Socket protocol
 pub mod Protocol {
-    use std::os::raw::c_int;
-    pub const NONE: c_int = 0;
-    pub const ICMP: c_int = 1;
-    pub const TCP: c_int = 6;
-    pub const UDP: c_int = 17;
-    pub const ICMPV6: c_int = 58;
+    use super::{c_int, winapi};
+
+    pub const NONE:   c_int = winapi::IPPROTO_NONE.0 as i32;
+    pub const ICMPv4: c_int = winapi::IPPROTO_ICMP.0 as i32;
+    pub const TCP:    c_int = winapi::IPPROTO_TCP.0 as i32;
+    pub const UDP:    c_int = winapi::IPPROTO_UDP.0 as i32;
+    pub const ICMPv6: c_int = winapi::IPPROTO_ICMPV6.0 as i32;
 }
 
+#[repr(i32)]
 #[derive(Copy, Clone)]
 ///Type of socket's shutdown operation.
 pub enum ShutdownType {
@@ -446,9 +410,7 @@ impl Socket {
 
     ///Sets non-blocking mode.
     pub fn set_nonblocking(&self, value: bool) -> io::Result<()> {
-        const FIONBIO: c_ulong = 0x8004667e;
-
-        self.ioctl(FIONBIO as c_long, value as c_ulong)
+        self.ioctl(winapi::FIONBIO, value as c_ulong)
     }
 
 
@@ -490,12 +452,13 @@ fn get_raw_addr(addr: &net::SocketAddr) -> (*const winapi::SOCKADDR, c_int) {
 fn sockaddr_to_addr(storage: &winapi::SOCKADDR_STORAGE_LH, len: c_int) -> io::Result<net::SocketAddr> {
     match storage.ss_family as c_int {
         winapi::AF_INET => {
-            assert!(len as usize >= mem::size_of::<winapi::sockaddr_in>());
-            let storage = unsafe { *(storage as *const _ as *const winapi::sockaddr_in) };
-            let ip = net::Ipv4Addr::new(storage.sin_addr.s_addr[0],
-                                        storage.sin_addr.s_addr[1],
-                                        storage.sin_addr.s_addr[2],
-                                        storage.sin_addr.s_addr[3]);
+            assert!(len as usize >= mem::size_of::<winapi::SOCKADDR_IN>());
+            let storage = unsafe { *(storage as *const _ as *const winapi::SOCKADDR_IN) };
+            let address = unsafe { storage.sin_addr.S_un_b() };
+            let ip = net::Ipv4Addr::new(address.s_b1,
+                                        address.s_b2,
+                                        address.s_b3,
+                                        address.s_b4);
 
             //Note to_be() swap bytes on LE targets
             //As IP stuff is always BE, we need swap only on LE targets
@@ -504,14 +467,7 @@ fn sockaddr_to_addr(storage: &winapi::SOCKADDR_STORAGE_LH, len: c_int) -> io::Re
         winapi::AF_INET6 => {
             assert!(len as usize >= mem::size_of::<winapi::sockaddr_in6>());
             let storage = unsafe { *(storage as *const _ as *const winapi::sockaddr_in6) };
-            let ip = net::Ipv6Addr::new(storage.sin6_addr.s6_addr[0],
-                                        storage.sin6_addr.s6_addr[1],
-                                        storage.sin6_addr.s6_addr[2],
-                                        storage.sin6_addr.s6_addr[3],
-                                        storage.sin6_addr.s6_addr[4],
-                                        storage.sin6_addr.s6_addr[5],
-                                        storage.sin6_addr.s6_addr[6],
-                                        storage.sin6_addr.s6_addr[7]);
+            let ip = net::Ipv6Addr::from(storage.sin6_addr.s6_addr.clone());
 
             Ok(net::SocketAddr::V6(net::SocketAddrV6::new(ip, storage.sin6_port.to_be(), storage.sin6_flowinfo, storage.sin6_scope_id)))
         }
@@ -562,9 +518,9 @@ fn ms_to_timeval(timeout_ms: u64) -> winapi::timeval {
     }
 }
 
-fn sockets_to_fd_set(sockets: &[&Socket]) -> winapi::FD_SET {
+fn sockets_to_fd_set(sockets: &[&Socket]) -> winapi::fd_set {
     assert!(sockets.len() < winapi::FD_SETSIZE);
-    let mut raw_fds: winapi::FD_SET = unsafe { mem::zeroed() };
+    let mut raw_fds: winapi::fd_set = unsafe { mem::zeroed() };
 
     for socket in sockets {
         let idx = raw_fds.fd_count as usize;

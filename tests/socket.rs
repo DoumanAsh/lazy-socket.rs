@@ -14,7 +14,7 @@ fn socket_new_raw_icmp() {
     //Test requires admin privileges.
     let addr = net::SocketAddr::from_str("0.0.0.0:0").unwrap();
 
-    let socket = Socket::new(Family::IPV4, Type::RAW, Protocol::ICMP);
+    let socket = Socket::new(Family::IPv4, Type::RAW, Protocol::ICMPv4);
 
     if let Err(error) = socket {
         let error_code = error.raw_os_error().unwrap();
@@ -45,7 +45,7 @@ fn socket_new_raw_icmp() {
 
 #[test]
 fn socket_test_udp() {
-    let family = Family::IPV4;
+    let family = Family::IPv4;
     let ty = Type::DATAGRAM;
     let proto = Protocol::UDP;
     let data = [1, 2, 3, 4];
@@ -105,7 +105,7 @@ fn socket_test_udp() {
 
 #[test]
 fn socket_test_tcp() {
-    let family = Family::IPV4;
+    let family = Family::IPv4;
     let ty = Type::STREAM;
     let proto = Protocol::TCP;
     let data = [1, 2, 3, 4];
@@ -158,7 +158,7 @@ fn socket_test_options() {
     #[cfg(unix)]
     let name: c_int = libc::SO_REUSEADDR; //SO_REUSEADDR
 
-    let socket = Socket::new(Family::IPV4, Type::STREAM, Protocol::TCP).unwrap();
+    let socket = Socket::new(Family::IPv4, Type::STREAM, Protocol::TCP).unwrap();
 
     let result = socket.get_opt::<c_int>(level, name);
     assert!(result.is_ok());
@@ -194,7 +194,7 @@ fn socket_as_into_from_traits() {
     let raw_socket;
 
     {
-        let socket = Socket::new(Family::IPV4, Type::STREAM, Protocol::TCP).unwrap();
+        let socket = Socket::new(Family::IPv4, Type::STREAM, Protocol::TCP).unwrap();
         raw_socket = socket.into_raw_socket();
     }
 
@@ -216,7 +216,7 @@ fn socket_as_into_from_traits() {
     let raw_socket;
 
     {
-        let socket = Socket::new(Family::IPV4, Type::STREAM, Protocol::TCP).unwrap();
+        let socket = Socket::new(Family::IPv4, Type::STREAM, Protocol::TCP).unwrap();
         raw_socket = socket.into_raw_fd();
     }
 
@@ -236,7 +236,7 @@ fn socket_select_timeout() {
 
     let server_addr = net::SocketAddr::from_str("222.0.0.1:60004").unwrap();
 
-    let client = Socket::new(Family::IPV4, Type::STREAM, Protocol::TCP).unwrap();
+    let client = Socket::new(Family::IPv4, Type::STREAM, Protocol::TCP).unwrap();
 
     assert!(client.set_nonblocking(true).is_ok());
     let result = client.connect(&server_addr);
@@ -260,7 +260,7 @@ fn socket_select_connect() {
     #[cfg(unix)]
     let would_block_errno = libc::EINPROGRESS;
 
-    let family = Family::IPV4;
+    let family = Family::IPv4;
     let ty = Type::STREAM;
     let proto = Protocol::TCP;
     let server_addr = net::SocketAddr::from_str("127.0.0.1:60006").unwrap();
