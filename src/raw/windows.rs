@@ -16,6 +16,7 @@ mod winapi {
 
 	pub use self::winapi::{
 		ADDRESS_FAMILY,
+		HANDLE,
 		DWORD,
 		WORD,
 		GROUP,
@@ -92,6 +93,14 @@ mod winapi {
         closesocket,
         select
     };
+
+
+    extern crate kernel32;
+
+    // Currently not available in `winapi`.
+    pub const HANDLE_FLAG_INHERIT: winapi::DWORD = 1;
+
+    pub use self::kernel32::SetHandleInformation;
 }
 
 
@@ -114,7 +123,7 @@ pub mod Family {
     use super::{c_int, winapi};
 
     pub const UNSPECIFIED: c_int = winapi::AF_UNSPEC;
-    
+
     pub const IPv4: c_int = winapi::AF_INET;
     pub const IPv6: c_int = winapi::AF_INET6;
     pub const IRDA: c_int = winapi::AF_IRDA;
@@ -411,6 +420,20 @@ impl Socket {
     ///Sets non-blocking mode.
     pub fn set_nonblocking(&self, value: bool) -> io::Result<()> {
         self.ioctl(winapi::FIONBIO, value as c_ulong)
+    }
+
+
+    ///Sets whether this socket will be inherited by child processes or not.
+    ///
+    ///Internally this implemented by calling `SetHandleInformation(sock, HANDLE_FLAG_INHERIT, …)`.
+    pub fn set_inheritable(&self, value: bool) -> io::Result<()> {
+        unsafe {
+            let flag = if value { winapi::HANDLE_FLAG_INHERIT } else { 0 };
+            match winapi::SetHandleInformation(self.inner as winapi::HANDLE, winapi::HANDLE_FLAG_INHERIT, flag) {
+                0 => Err(io::Error::last_os_error()),
+                _ => Ok(())
+            }
+        }
     }
 
 

@@ -14,5 +14,6 @@ keywords = ["socket"]
 libc = "^0.2.20"
 
 [target."cfg(windows)".dependencies]
-winapi     = "^0.2.8"
-ws2_32-sys = "^0.2.1"
+kernel32-sys = "^0.2.2"
+winapi       = "^0.2.8"
+ws2_32-sys   = "^0.2.1"

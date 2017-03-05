@@ -64,7 +64,10 @@ mod libc {
 
     //Constants
     pub use self::libc::{
-        FIONBIO
+        FIONBIO,
+        F_GETFD,
+        F_SETFD,
+        FD_CLOEXEC
     };
 
     #[cfg(target_os = "macos")]
@@ -111,6 +114,7 @@ mod libc {
         connect,
         getsockopt,
         setsockopt,
+        fcntl,
         ioctl,
         shutdown,
         close,
@@ -411,6 +415,42 @@ impl Socket {
     ///Sets non-blocking mode.
     pub fn set_nonblocking(&self, value: bool) -> io::Result<()> {
         self.ioctl(FIONBIO, value as c_ulong)
+    }
+
+
+    ///Sets whether this socket will be inherited by newly created processes or not.
+    ///
+    ///Internally this is implemented by calling `fcntl(fd, F_GETFD)` and `fcntl(fd, F_SETFD)`
+    ///to update the `FD_CLOEXEC` flag. (In the future this might use `ioctl(2)` on some
+    ///platforms instead.)
+    ///
+    ///This means that the socket will still be available to forked off child processes until it
+    ///calls `execve(2)` to complete the creation of a new process. A forking server application
+    ///(or similar) should therefor not expect this flag to have any effect on spawned off workers;
+    ///you're advised to manually call `.close()` on the socket instance in the worker process
+    ///instead. The standard library's `std::process` facility is not impacted by this however.
+    pub fn set_inheritable(&self, value: bool) -> io::Result<()> {
+        // Some (or possibly all?) OS's support the `FIOCLEX` and `FIONCLEX`
+        // `ioctl`s instead, however there is no support for that in `libc`
+        // currently and no usable documentation for figuring out who supports
+        // this feature online either
+        unsafe {
+            let mut flags: libc::c_int = libc::fcntl(self.inner, libc::F_GETFD);
+            if flags < 0 {
+                return Err(io::Error::last_os_error());
+            }
+            
+            if value == true {
+                flags &= !libc::FD_CLOEXEC;
+            } else {
+                flags |= libc::FD_CLOEXEC;
+            }
+            if libc::fcntl(self.inner, libc::F_SETFD, flags) < 0 {
+                return Err(io::Error::last_os_error());
+            }
+        }
+        
+        Ok(())
     }
 
 
