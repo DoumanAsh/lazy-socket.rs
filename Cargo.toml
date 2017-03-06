@@ -9,6 +9,7 @@ license = "MIT"
 keywords = ["socket"]
 
 [dependencies]
+bitflags = "^0.8"
 
 [target."cfg(unix)".dependencies]
 libc = "^0.2.20"

@@ -267,7 +267,7 @@ fn socket_select_connect() {
 
     let server = Socket::new(family, ty, proto).unwrap();
     assert!(server.bind(&server_addr).is_ok());
-    assert!(server.listen(0).is_ok());
+    server.listen(0).unwrap();
 
     let client = Socket::new(family, ty, proto).unwrap();
 

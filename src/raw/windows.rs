@@ -55,6 +55,9 @@ mod winapi {
         WSASYS_STATUS_LEN
     };
 
+    pub const SOCK_NONBLOCK: winapi::c_int = 0o0004000;
+    pub const SOCK_CLOEXEC: winapi::c_int = 0o2000000;
+
     pub use self::winapi::{
         WSADATA,
         fd_set,
@@ -153,6 +156,16 @@ pub mod Protocol {
     pub const UDP:    c_int = winapi::IPPROTO_UDP.0 as i32;
     pub const ICMPv6: c_int = winapi::IPPROTO_ICMPV6.0 as i32;
 }
+
+#[allow(non_snake_case)]
+///Possible flags for `accept4()`
+///
+///Note that these flags correspond to emulated constants that are not represented
+///in the OS in this way.
+bitflags! (pub flags AcceptFlags: c_int {
+    const NON_BLOCKING    = winapi::SOCK_NONBLOCK,
+    const NON_INHERITABLE = winapi::SOCK_CLOEXEC,
+});
 
 #[repr(i32)]
 #[derive(Copy, Clone)]
@@ -346,6 +359,24 @@ impl Socket {
         }
     }
 
+    ///Accept a new incoming client connection and return its files descriptor and address.
+    ///
+    ///This is an emulation of the corresponding Unix system call, that will automatically call
+    ///`.set_nonblocking` and `.set_inheritable` with parameter values based on the value of
+    ///`flags` on the created client socket:
+    ///
+    /// * `AcceptFlags::NON_BLOCKING`    – Mark the newly created socket as non-blocking
+    /// * `AcceptFlags::NON_INHERITABLE` – Mark the newly created socket as not inheritable by client processes
+    pub fn accept4(&self, flags: AcceptFlags) -> io::Result<(Socket, net::SocketAddr)> {
+        self.accept().map(|(sock, addr)| {
+            // Emulate the two most common (and useful) `accept4` flags
+            sock.set_nonblocking( flags.contains(NON_BLOCKING)).expect("Setting newly obtained client socket blocking mode");
+            sock.set_inheritable(!flags.contains(NON_INHERITABLE)).expect("Setting newly obtained client socket inheritance mode");
+
+            (sock, addr)
+        })
+    }
+
     ///Accepts incoming connection.
     pub fn accept(&self) -> io::Result<(Socket, net::SocketAddr)> {
         unsafe {
@@ -356,7 +387,7 @@ impl Socket {
                 winapi::INVALID_SOCKET => Err(io::Error::last_os_error()),
                 sock @ _ => {
                     let addr = sockaddr_to_addr(&storage, len)?;
-                    Ok((Socket { inner: sock, }, addr))
+                    Ok((Socket { inner: sock }, addr))
                 }
             }
         }
@@ -419,7 +450,7 @@ impl Socket {
 
     ///Sets non-blocking mode.
     pub fn set_nonblocking(&self, value: bool) -> io::Result<()> {
-        self.ioctl(winapi::FIONBIO, value as c_ulong)
+        self.ioctl(winapi::FIONBIO as c_int, value as c_ulong)
     }
 
 

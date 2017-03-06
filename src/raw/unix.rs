@@ -64,6 +64,7 @@ mod libc {
 
     //Constants
     pub use self::libc::{
+        EINVAL,
         FIONBIO,
         F_GETFD,
         F_SETFD,
@@ -83,6 +84,10 @@ mod libc {
 
     #[cfg(target_os = "macos")]
     pub const AF_UNSPEC: c_int = 0;
+    #[cfg(target_os = "macos")]
+    pub const SOCK_NONBLOCK: c_int = 0o0004000;
+    #[cfg(target_os = "macos")]
+    pub const SOCK_CLOEXEC: c_int = 0o2000000;
 
     #[cfg(not(target_os = "macos"))]
     pub use self::libc::{
@@ -120,6 +125,11 @@ mod libc {
         close,
         select,
         FD_SET
+    };
+    
+    #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd", target_os = "dragonflybsd"))]
+    pub use self::libc::{
+        accept4
     };
 }
 
@@ -177,6 +187,13 @@ pub mod Protocol {
     pub const UDP: c_int = 17;
     pub const ICMPv6: c_int = 58;
 }
+
+#[allow(non_snake_case)]
+///Possible flags for `accept4()`
+bitflags! (pub flags AcceptFlags: c_int {
+    const NON_BLOCKING    = SOCK_NONBLOCK,
+    const NON_INHERITABLE = SOCK_CLOEXEC,
+});
 
 #[repr(i32)]
 #[derive(Copy, Clone)]
@@ -342,7 +359,57 @@ impl Socket {
         }
     }
 
-    ///Accepts incoming connection.
+    ///Accept a new incoming client connection and return its files descriptor and address.
+    ///
+    ///By default the newly created socket will be inheritable by child processes and created
+    ///in blocking I/O mode. This behaviour can be customized using the `flags` parameter:
+    ///
+    /// * `AcceptFlags::NON_BLOCKING`    – Mark the newly created socket as non-blocking
+    /// * `AcceptFlags::NON_INHERITABLE` – Mark the newly created socket as not inheritable by client processes
+    ///
+    ///Depending on the operating system's availablility of the `accept4(2)` system call this call
+    ///either pass the flags on to the operating system or emulate the call using `accept(2)`.
+    pub fn accept4(&self, flags: AcceptFlags) -> io::Result<(Socket, net::SocketAddr)> {
+        #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd", target_os = "dragonflybsd"))]
+        unsafe {
+            let mut storage: sockaddr_storage = mem::zeroed();
+            let mut len = mem::size_of_val(&storage) as socklen_t;
+
+            match accept4(self.inner, &mut storage as *mut _ as *mut _, &mut len, flags.bits()) {
+                SOCKET_ERROR => Err(io::Error::last_os_error()),
+                sock @ _ => {
+                    let addr = sockaddr_to_addr(&storage, len)?;
+                    Ok((Socket { inner: sock, }, addr))
+                }
+            }
+        }
+        
+        #[cfg(not(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd", target_os = "dragonflybsd")))]
+        {
+            self.accept().map(|(sock, addr)| {
+                // Emulate the two most common (and useful) `accept4` flags using `ioctl`/`fcntl`
+                //
+                // The only errors that can happen here fall into two categories:
+                // 
+                //  * Programming errors on our side
+                //    (unlikely, but in this case panicing is actually the right thing to do anyway)
+                //  * Another thread causing havok with random file descriptors
+                //    (always very bad and nothing, particularily since there is absolutely nothing
+                //     that we OR THE CALLER can do about this)
+                sock.set_nonblocking( flags.contains(NON_BLOCKING)).expect("Setting newly obtained client socket blocking mode");
+                sock.set_inheritable(!flags.contains(NON_INHERITABLE)).expect("Setting newly obtained client socket inheritance mode");
+
+                (sock, addr)
+            })
+        }
+    }
+    
+    
+    ///Accept a new incoming client connection and return its files descriptor and address.
+    ///
+    ///As this uses the classic `accept(2)` system call internally, you are **strongly advised** to
+    ///use the `.accept4()` method instead to get definied blocking and inheritance semantics for
+    ///the created file descriptor.
     pub fn accept(&self) -> io::Result<(Socket, net::SocketAddr)> {
         unsafe {
             let mut storage: sockaddr_storage = mem::zeroed();
@@ -352,7 +419,7 @@ impl Socket {
                 SOCKET_ERROR => Err(io::Error::last_os_error()),
                 sock @ _ => {
                     let addr = sockaddr_to_addr(&storage, len)?;
-                    Ok((Socket { inner: sock, }, addr))
+                    Ok((Socket { inner: sock }, addr))
                 }
             }
         }
