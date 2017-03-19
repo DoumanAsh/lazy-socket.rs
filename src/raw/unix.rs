@@ -497,6 +497,20 @@ impl Socket {
         Ok(())
     }
 
+	///Returns whether this will be inherited by newly created processes or not.
+	///
+	///See `set_inheritable` for a detailed description of what this means.
+	pub fn get_inheritable(&self) -> io::Result<bool> {
+		unsafe {
+            let flags: libc::c_int = libc::fcntl(self.inner, libc::F_GETFD);
+            if flags < 0 {
+                return Err(io::Error::last_os_error());
+            }
+            
+            Ok((flags & libc::FD_CLOEXEC) == 0)
+        }
+	}
+
 
     ///Stops receive and/or send over socket.
     pub fn shutdown(&self, direction: ShutdownType) -> io::Result<()> {

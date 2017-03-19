@@ -173,6 +173,11 @@ fn socket_test_tcp6() {
 
         assert_eq!(result_addr, client_addr);
 
+        // Check whether the `NON_INHERITABLE` flag worked
+        let result = result_socket.get_inheritable();
+        assert!(result.is_ok() && result.unwrap() == false);
+
+		// Check whether the `NON_BLOCKING` flag worked
         let mut buf = [0; 10];
         let result = result_socket.recv(&mut buf, 0);
         assert!(result.is_err() && result.unwrap_err().kind() == std::io::ErrorKind::WouldBlock);
@@ -229,7 +234,9 @@ fn socket_test_options() {
     assert_eq!(result.unwrap(), value_true);
 
     assert!(socket.set_nonblocking(true).is_ok());
+    assert!(socket.set_inheritable(true).is_ok());
     assert!(socket.set_nonblocking(false).is_ok());
+    assert!(socket.set_inheritable(false).is_ok());
 }
 
 #[cfg(windows)]

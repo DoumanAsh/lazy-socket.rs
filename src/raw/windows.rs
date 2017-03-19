@@ -103,7 +103,10 @@ mod winapi {
     // Currently not available in `winapi`.
     pub const HANDLE_FLAG_INHERIT: winapi::DWORD = 1;
 
-    pub use self::kernel32::SetHandleInformation;
+    pub use self::kernel32::{
+    	SetHandleInformation,
+    	GetHandleInformation
+    };
 }
 
 
@@ -466,6 +469,18 @@ impl Socket {
             }
         }
     }
+
+
+	///Returns whether this socket will be inherited by child processes or not.
+	pub fn get_inheritable(&self) -> io::Result<bool> {
+		unsafe {
+			let mut flags: winapi::DWORD = 0;
+			match winapi::GetHandleInformation(self.inner as winapi::HANDLE, &mut flags as *mut _) {
+                0 => Err(io::Error::last_os_error()),
+                _ => Ok((flags & winapi::HANDLE_FLAG_INHERIT) != 0)
+            }
+        }
+	}
 
 
     ///Stops receive and/or send over socket.
