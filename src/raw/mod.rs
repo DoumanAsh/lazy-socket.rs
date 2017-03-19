@@ -1,3 +1,6 @@
+//! Raw module.
+//!
+//! Core part that exposes Raw Socket.
 #[cfg(unix)]
 mod unix;
 #[cfg(unix)]

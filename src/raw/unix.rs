@@ -30,7 +30,7 @@ mod libc {
 	pub use self::libc::{
         sockaddr_in,
         sockaddr_in6,
-        
+
         in_addr,
         in6_addr
     };
@@ -103,7 +103,7 @@ mod libc {
         select,
         FD_SET
     };
-    
+
     #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd", target_os = "dragonflybsd"))]
     pub use self::libc::{
         accept4
@@ -360,19 +360,19 @@ impl Socket {
                 }
             }
         }
-        
+
         #[cfg(not(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd", target_os = "dragonflybsd")))]
         {
             self.accept().map(|(sock, addr)| {
                 // Emulate the two most common (and useful) `accept4` flags using `ioctl`/`fcntl`
                 //
                 // The only errors that can happen here fall into two categories:
-                // 
+                //
                 //  * Programming errors on our side
                 //    (unlikely, but in this case panicing is actually the right thing to do anyway)
                 //  * Another thread causing havok with random file descriptors
                 //    (always very bad and nothing, particularily since there is absolutely nothing
-                //     that we OR THE CALLER can do about this)
+                //     that we OR USER can do about this)
                 sock.set_blocking(!flags.contains(NON_BLOCKING)).expect("Setting newly obtained client socket blocking mode");
                 sock.set_inheritable(!flags.contains(NON_INHERITABLE)).expect("Setting newly obtained client socket inheritance mode");
 
@@ -380,8 +380,8 @@ impl Socket {
             })
         }
     }
-    
-    
+
+
     ///Accept a new incoming client connection and return its files descriptor and address.
     ///
     ///As this uses the classic `accept(2)` system call internally, you are **strongly advised** to
@@ -401,7 +401,7 @@ impl Socket {
             }
         }
     }
-    
+
 
     ///Connects socket with remote address.
     pub fn connect(&self, addr: &net::SocketAddr) -> io::Result<()> {
@@ -483,17 +483,18 @@ impl Socket {
             if flags < 0 {
                 return Err(io::Error::last_os_error());
             }
-            
+
             if value == true {
                 flags &= !libc::FD_CLOEXEC;
             } else {
                 flags |= libc::FD_CLOEXEC;
             }
+
             if libc::fcntl(self.inner, libc::F_SETFD, flags) < 0 {
                 return Err(io::Error::last_os_error());
             }
         }
-        
+
         Ok(())
     }
 
@@ -502,11 +503,11 @@ impl Socket {
 	///See `set_inheritable` for a detailed description of what this means.
 	pub fn get_inheritable(&self) -> io::Result<bool> {
 		unsafe {
-            let flags: libc::c_int = libc::fcntl(self.inner, libc::F_GETFD);
+            let flags = libc::fcntl(self.inner, libc::F_GETFD);
             if flags < 0 {
                 return Err(io::Error::last_os_error());
             }
-            
+
             Ok((flags & libc::FD_CLOEXEC) == 0)
         }
 	}

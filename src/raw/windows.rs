@@ -71,8 +71,6 @@ mod winapi {
         LPWSADATA
     };
 
-
-
     extern crate ws2_32;
 
     pub use self::ws2_32::{
@@ -97,7 +95,6 @@ mod winapi {
         select
     };
 
-
     extern crate kernel32;
 
     // Currently not available in `winapi`.
@@ -108,7 +105,6 @@ mod winapi {
     	GetHandleInformation
     };
 }
-
 
 macro_rules! impl_into_trait {
     ($($t:ty), +) => {
@@ -121,7 +117,6 @@ macro_rules! impl_into_trait {
         )+
     };
 }
-
 
 #[allow(non_snake_case, non_upper_case_globals)]
 ///Socket family
@@ -456,7 +451,6 @@ impl Socket {
         self.ioctl(winapi::FIONBIO as c_int, (!value) as c_ulong)
     }
 
-
     ///Sets whether this socket will be inherited by child processes or not.
     ///
     ///Internally this implemented by calling `SetHandleInformation(sock, HANDLE_FLAG_INHERIT, …)`.
@@ -470,7 +464,6 @@ impl Socket {
         }
     }
 
-
 	///Returns whether this socket will be inherited by child processes or not.
 	pub fn get_inheritable(&self) -> io::Result<bool> {
 		unsafe {
@@ -481,7 +474,6 @@ impl Socket {
             }
         }
 	}
-
 
     ///Stops receive and/or send over socket.
     pub fn shutdown(&self, direction: ShutdownType) -> io::Result<()> {
