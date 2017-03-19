@@ -27,36 +27,13 @@ mod libc {
         suseconds_t
     };
 
-    #[repr(C)]
-    #[derive(Copy, Clone)]
-    pub struct in_addr {
-        pub s_addr: [u8; 4]
-    }
-
-    #[repr(C)]
-    #[derive(Copy, Clone)]
-    pub struct sockaddr_in {
-        pub sin_family: sa_family_t,
-        pub sin_port: in_port_t,
-        pub sin_addr: in_addr,
-        pub sin_zero: [u8; 8],
-    }
-
-    #[repr(C)]
-    #[derive(Copy, Clone)]
-    pub struct in6_addr {
-        pub s6_addr: [u16; 8],
-    }
-
-    #[repr(C)]
-    #[derive(Copy, Clone)]
-    pub struct sockaddr_in6 {
-        pub sin6_family: sa_family_t,
-        pub sin6_port: in_port_t,
-        pub sin6_flowinfo: u32,
-        pub sin6_addr: in6_addr,
-        pub sin6_scope_id: u32,
-    }
+	pub use self::libc::{
+        sockaddr_in,
+        sockaddr_in6,
+        
+        in_addr,
+        in6_addr
+    };
 
     pub type SOCKET = c_int;
     pub const SOCKET_ERROR: c_int = -1;
@@ -64,7 +41,11 @@ mod libc {
 
     //Constants
     pub use self::libc::{
-        FIONBIO
+        EINVAL,
+        FIONBIO,
+        F_GETFD,
+        F_SETFD,
+        FD_CLOEXEC
     };
 
     #[cfg(target_os = "macos")]
@@ -80,6 +61,10 @@ mod libc {
 
     #[cfg(target_os = "macos")]
     pub const AF_UNSPEC: c_int = 0;
+    #[cfg(target_os = "macos")]
+    pub const SOCK_NONBLOCK: c_int = 0o0004000;
+    #[cfg(target_os = "macos")]
+    pub const SOCK_CLOEXEC: c_int = 0o2000000;
 
     #[cfg(not(target_os = "macos"))]
     pub use self::libc::{
@@ -111,11 +96,17 @@ mod libc {
         connect,
         getsockopt,
         setsockopt,
+        fcntl,
         ioctl,
         shutdown,
         close,
         select,
         FD_SET
+    };
+    
+    #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd", target_os = "dragonflybsd"))]
+    pub use self::libc::{
+        accept4
     };
 }
 
@@ -133,14 +124,14 @@ macro_rules! impl_into_trait {
     };
 }
 
-#[allow(non_snake_case)]
+#[allow(non_snake_case, non_upper_case_globals)]
 ///Socket family
 pub mod Family {
     use super::libc::*;
     pub const UNSPECIFIED: c_int = AF_UNSPEC;
     pub const UNIX: c_int = AF_UNIX;
-    pub const IPV4: c_int = AF_INET;
-    pub const IPV6: c_int = AF_INET6;
+    pub const IPv4: c_int = AF_INET;
+    pub const IPv6: c_int = AF_INET6;
     #[cfg(not(target_os = "macos"))]
     pub const NETLINK: c_int = AF_NETLINK;
     #[cfg(not(target_os = "macos"))]
@@ -163,17 +154,25 @@ pub mod Type {
     pub const CLOEXEC: c_int = SOCK_CLOEXEC;
 }
 
-#[allow(non_snake_case)]
+#[allow(non_snake_case, non_upper_case_globals)]
 ///Socket protocol
 pub mod Protocol {
     use super::libc::*;
     pub const NONE: c_int = 0;
-    pub const ICMP: c_int = 1;
+    pub const ICMPv4: c_int = 1;
     pub const TCP: c_int = 6;
     pub const UDP: c_int = 17;
-    pub const ICMPV6: c_int = 58;
+    pub const ICMPv6: c_int = 58;
 }
 
+#[allow(non_snake_case)]
+///Possible flags for `accept4()`
+bitflags! (pub flags AcceptFlags: c_int {
+    const NON_BLOCKING    = SOCK_NONBLOCK,
+    const NON_INHERITABLE = SOCK_CLOEXEC,
+});
+
+#[repr(i32)]
 #[derive(Copy, Clone)]
 ///Type of socket's shutdown operation.
 pub enum ShutdownType {
@@ -256,10 +255,10 @@ impl Socket {
     ///Receives some bytes from socket
     ///
     ///Number of received bytes is returned on success
-    pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
+    pub fn recv(&self, buf: &mut [u8], flags: c_int) -> io::Result<usize> {
         let len = cmp::min(buf.len(), i32::max_value() as usize) as size_t;
         unsafe {
-            match recv(self.inner, buf.as_mut_ptr() as *mut c_void, len, 0) {
+            match recv(self.inner, buf.as_mut_ptr() as *mut c_void, len, flags) {
                 -1 => Err(io::Error::last_os_error()),
                 n => Ok(n as usize)
             }
@@ -269,13 +268,13 @@ impl Socket {
     ///Receives some bytes from socket
     ///
     ///Number of received bytes and remote address are returned on success.
-    pub fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, net::SocketAddr)> {
+    pub fn recv_from(&self, buf: &mut [u8], flags: c_int) -> io::Result<(usize, net::SocketAddr)> {
         let len = cmp::min(buf.len(), i32::max_value() as usize) as size_t;
         unsafe {
             let mut storage: sockaddr_storage = mem::zeroed();
             let mut storage_len = mem::size_of_val(&storage) as socklen_t;
 
-            match recvfrom(self.inner, buf.as_mut_ptr() as *mut c_void, len, 0, &mut storage as *mut _ as *mut _, &mut storage_len) {
+            match recvfrom(self.inner, buf.as_mut_ptr() as *mut c_void, len, flags, &mut storage as *mut _ as *mut _, &mut storage_len) {
                 -1 => Err(io::Error::last_os_error()),
                 n => {
                     let peer_addr = sockaddr_to_addr(&storage, storage_len)?;
@@ -288,11 +287,11 @@ impl Socket {
     ///Sends some bytes through socket.
     ///
     ///Number of sent bytes is returned.
-    pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
+    pub fn send(&self, buf: &[u8], flags: c_int) -> io::Result<usize> {
         let len = cmp::min(buf.len(), i32::max_value() as usize) as size_t;
 
         unsafe {
-            match send(self.inner, buf.as_ptr() as *const c_void, len, 0) {
+            match send(self.inner, buf.as_ptr() as *const c_void, len, flags) {
                 -1 => {
                     let error = io::Error::last_os_error();
                     let raw_code = error.raw_os_error().unwrap();
@@ -315,12 +314,12 @@ impl Socket {
     ///
     ///Note: the socket will be bound, if it isn't already.
     ///Use method `name` to determine address.
-    pub fn send_to(&self, buf: &[u8], peer_addr: &net::SocketAddr) -> io::Result<usize> {
+    pub fn send_to(&self, buf: &[u8], peer_addr: &net::SocketAddr, flags: c_int) -> io::Result<usize> {
         let len = cmp::min(buf.len(), i32::max_value() as usize) as size_t;
         let (addr, addr_len) = get_raw_addr(peer_addr);
 
         unsafe {
-            match sendto(self.inner, buf.as_ptr() as *const c_void, len, 0, addr, addr_len) {
+            match sendto(self.inner, buf.as_ptr() as *const c_void, len, flags, addr, addr_len) {
                 -1 => {
                     let error = io::Error::last_os_error();
                     let raw_code = error.raw_os_error().unwrap();
@@ -337,7 +336,57 @@ impl Socket {
         }
     }
 
-    ///Accepts incoming connection.
+    ///Accept a new incoming client connection and return its files descriptor and address.
+    ///
+    ///By default the newly created socket will be inheritable by child processes and created
+    ///in blocking I/O mode. This behaviour can be customized using the `flags` parameter:
+    ///
+    /// * `AcceptFlags::NON_BLOCKING`    – Mark the newly created socket as non-blocking
+    /// * `AcceptFlags::NON_INHERITABLE` – Mark the newly created socket as not inheritable by client processes
+    ///
+    ///Depending on the operating system's availablility of the `accept4(2)` system call this call
+    ///either pass the flags on to the operating system or emulate the call using `accept(2)`.
+    pub fn accept4(&self, flags: AcceptFlags) -> io::Result<(Socket, net::SocketAddr)> {
+        #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd", target_os = "dragonflybsd"))]
+        unsafe {
+            let mut storage: sockaddr_storage = mem::zeroed();
+            let mut len = mem::size_of_val(&storage) as socklen_t;
+
+            match accept4(self.inner, &mut storage as *mut _ as *mut _, &mut len, flags.bits()) {
+                SOCKET_ERROR => Err(io::Error::last_os_error()),
+                sock @ _ => {
+                    let addr = sockaddr_to_addr(&storage, len)?;
+                    Ok((Socket { inner: sock, }, addr))
+                }
+            }
+        }
+        
+        #[cfg(not(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd", target_os = "dragonflybsd")))]
+        {
+            self.accept().map(|(sock, addr)| {
+                // Emulate the two most common (and useful) `accept4` flags using `ioctl`/`fcntl`
+                //
+                // The only errors that can happen here fall into two categories:
+                // 
+                //  * Programming errors on our side
+                //    (unlikely, but in this case panicing is actually the right thing to do anyway)
+                //  * Another thread causing havok with random file descriptors
+                //    (always very bad and nothing, particularily since there is absolutely nothing
+                //     that we OR THE CALLER can do about this)
+                sock.set_blocking(!flags.contains(NON_BLOCKING)).expect("Setting newly obtained client socket blocking mode");
+                sock.set_inheritable(!flags.contains(NON_INHERITABLE)).expect("Setting newly obtained client socket inheritance mode");
+
+                (sock, addr)
+            })
+        }
+    }
+    
+    
+    ///Accept a new incoming client connection and return its files descriptor and address.
+    ///
+    ///As this uses the classic `accept(2)` system call internally, you are **strongly advised** to
+    ///use the `.accept4()` method instead to get definied blocking and inheritance semantics for
+    ///the created file descriptor.
     pub fn accept(&self) -> io::Result<(Socket, net::SocketAddr)> {
         unsafe {
             let mut storage: sockaddr_storage = mem::zeroed();
@@ -347,11 +396,12 @@ impl Socket {
                 SOCKET_ERROR => Err(io::Error::last_os_error()),
                 sock @ _ => {
                     let addr = sockaddr_to_addr(&storage, len)?;
-                    Ok((Socket { inner: sock, }, addr))
+                    Ok((Socket { inner: sock }, addr))
                 }
             }
         }
     }
+    
 
     ///Connects socket with remote address.
     pub fn connect(&self, addr: &net::SocketAddr) -> io::Result<()> {
@@ -394,8 +444,6 @@ impl Socket {
     }
 
     ///Sets I/O parameters of socket.
-    ///
-    ///It uses `ioctlsocket` under hood.
     pub fn ioctl(&self, request: c_ulong, value: c_ulong) -> io::Result<()> {
         unsafe {
             let mut value = value;
@@ -409,9 +457,59 @@ impl Socket {
     }
 
     ///Sets non-blocking mode.
-    pub fn set_nonblocking(&self, value: bool) -> io::Result<()> {
-        self.ioctl(FIONBIO, value as c_ulong)
+    pub fn set_blocking(&self, value: bool) -> io::Result<()> {
+        self.ioctl(FIONBIO, (!value) as c_ulong)
     }
+
+
+    ///Sets whether this socket will be inherited by newly created processes or not.
+    ///
+    ///Internally this is implemented by calling `fcntl(fd, F_GETFD)` and `fcntl(fd, F_SETFD)`
+    ///to update the `FD_CLOEXEC` flag. (In the future this might use `ioctl(2)` on some
+    ///platforms instead.)
+    ///
+    ///This means that the socket will still be available to forked off child processes until it
+    ///calls `execve(2)` to complete the creation of a new process. A forking server application
+    ///(or similar) should therefor not expect this flag to have any effect on spawned off workers;
+    ///you're advised to manually call `.close()` on the socket instance in the worker process
+    ///instead. The standard library's `std::process` facility is not impacted by this however.
+    pub fn set_inheritable(&self, value: bool) -> io::Result<()> {
+        // Some (or possibly all?) OS's support the `FIOCLEX` and `FIONCLEX`
+        // `ioctl`s instead, however there is no support for that in `libc`
+        // currently and no usable documentation for figuring out who supports
+        // this feature online either
+        unsafe {
+            let mut flags: libc::c_int = libc::fcntl(self.inner, libc::F_GETFD);
+            if flags < 0 {
+                return Err(io::Error::last_os_error());
+            }
+            
+            if value == true {
+                flags &= !libc::FD_CLOEXEC;
+            } else {
+                flags |= libc::FD_CLOEXEC;
+            }
+            if libc::fcntl(self.inner, libc::F_SETFD, flags) < 0 {
+                return Err(io::Error::last_os_error());
+            }
+        }
+        
+        Ok(())
+    }
+
+	///Returns whether this will be inherited by newly created processes or not.
+	///
+	///See `set_inheritable` for a detailed description of what this means.
+	pub fn get_inheritable(&self) -> io::Result<bool> {
+		unsafe {
+            let flags: libc::c_int = libc::fcntl(self.inner, libc::F_GETFD);
+            if flags < 0 {
+                return Err(io::Error::last_os_error());
+            }
+            
+            Ok((flags & libc::FD_CLOEXEC) == 0)
+        }
+	}
 
 
     ///Stops receive and/or send over socket.
@@ -454,10 +552,8 @@ fn sockaddr_to_addr(storage: &sockaddr_storage, len: socklen_t) -> io::Result<ne
         AF_INET => {
             assert!(len as usize >= mem::size_of::<sockaddr_in>());
             let storage = unsafe { *(storage as *const _ as *const sockaddr_in) };
-            let ip = net::Ipv4Addr::new(storage.sin_addr.s_addr[0],
-                                        storage.sin_addr.s_addr[1],
-                                        storage.sin_addr.s_addr[2],
-                                        storage.sin_addr.s_addr[3]);
+            let address = unsafe { *(&storage.sin_addr.s_addr as *const _ as *const [u8; 4]) };
+            let ip = net::Ipv4Addr::from(address);
 
             //Note to_be() swap bytes on LE targets
             //As IP stuff is always BE, we need swap only on LE targets
@@ -466,14 +562,7 @@ fn sockaddr_to_addr(storage: &sockaddr_storage, len: socklen_t) -> io::Result<ne
         AF_INET6 => {
             assert!(len as usize >= mem::size_of::<sockaddr_in6>());
             let storage = unsafe { *(storage as *const _ as *const sockaddr_in6) };
-            let ip = net::Ipv6Addr::new(storage.sin6_addr.s6_addr[0],
-                                        storage.sin6_addr.s6_addr[1],
-                                        storage.sin6_addr.s6_addr[2],
-                                        storage.sin6_addr.s6_addr[3],
-                                        storage.sin6_addr.s6_addr[4],
-                                        storage.sin6_addr.s6_addr[5],
-                                        storage.sin6_addr.s6_addr[6],
-                                        storage.sin6_addr.s6_addr[7]);
+            let ip = net::Ipv6Addr::from(storage.sin6_addr.s6_addr.clone());
 
             Ok(net::SocketAddr::V6(net::SocketAddrV6::new(ip, storage.sin6_port.to_be(), storage.sin6_flowinfo, storage.sin6_scope_id)))
         }

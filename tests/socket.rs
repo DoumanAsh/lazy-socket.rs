@@ -14,7 +14,7 @@ fn socket_new_raw_icmp() {
     //Test requires admin privileges.
     let addr = net::SocketAddr::from_str("0.0.0.0:0").unwrap();
 
-    let socket = Socket::new(Family::IPV4, Type::RAW, Protocol::ICMP);
+    let socket = Socket::new(Family::IPv4, Type::RAW, Protocol::ICMPv4);
 
     if let Err(error) = socket {
         let error_code = error.raw_os_error().unwrap();
@@ -45,7 +45,7 @@ fn socket_new_raw_icmp() {
 
 #[test]
 fn socket_test_udp() {
-    let family = Family::IPV4;
+    let family = Family::IPv4;
     let ty = Type::DATAGRAM;
     let proto = Protocol::UDP;
     let data = [1, 2, 3, 4];
@@ -60,7 +60,7 @@ fn socket_test_udp() {
     assert!(client.bind(&net::SocketAddr::from_str("127.0.0.1:5666").unwrap()).is_ok());
     let client_addr = client.name().unwrap();
 
-    let result = client.send_to(&data, &addr);
+    let result = client.send_to(&data, &addr, 0);
     assert!(result.is_ok());
     let result = result.unwrap();
     assert_eq!(result, data.len());
@@ -68,7 +68,7 @@ fn socket_test_udp() {
     let mut read_data = [0; 10];
 
     // recv_from
-    let result = server.recv_from(&mut read_data);
+    let result = server.recv_from(&mut read_data, 0);
     assert!(result.is_ok());
     let (result_len, result_addr) = result.unwrap();
 
@@ -78,24 +78,24 @@ fn socket_test_udp() {
     assert_eq!(&read_data[..result_len], data);
 
     // 2 send + 2 recv
-    let result = client.send_to(&data, &addr);
+    let result = client.send_to(&data, &addr, 0);
     assert!(result.is_ok());
     let result = result.unwrap();
     assert_eq!(result, data.len());
 
-    let result = client.send_to(&data, &addr);
+    let result = client.send_to(&data, &addr, 0);
     assert!(result.is_ok());
     let result = result.unwrap();
     assert_eq!(result, data.len());
 
-    let result = server.recv(&mut read_data);
+    let result = server.recv(&mut read_data, 0);
     assert!(result.is_ok());
     let result_len = result.unwrap();
     assert_eq!(result_len, data.len());
     assert_eq!(read_data[result_len], 0);
     assert_eq!(&read_data[..result_len], data);
 
-    let result = server.recv(&mut read_data);
+    let result = server.recv(&mut read_data, 0);
     assert!(result.is_ok());
     let result_len = result.unwrap();
     assert_eq!(result_len, data.len());
@@ -105,7 +105,7 @@ fn socket_test_udp() {
 
 #[test]
 fn socket_test_tcp() {
-    let family = Family::IPV4;
+    let family = Family::IPv4;
     let ty = Type::STREAM;
     let proto = Protocol::TCP;
     let data = [1, 2, 3, 4];
@@ -131,7 +131,7 @@ fn socket_test_tcp() {
         assert_eq!(result_addr, client_addr);
 
         let mut buf = [0; 10];
-        let result = result_socket.recv(&mut buf);
+        let result = result_socket.recv(&mut buf, 0);
         assert!(result.is_ok());
         let result_len = result.unwrap();
         assert_eq!(result_len, data.len());
@@ -141,7 +141,62 @@ fn socket_test_tcp() {
 
     let result = client.connect(&server_addr);
     assert!(result.is_ok());
-    assert!(client.send(&data).is_ok());
+    assert!(client.send(&data, 0).is_ok());
+
+    assert!(th.join().is_ok());
+}
+
+#[test]
+fn socket_test_tcp6() {
+    let family = Family::IPv6;
+    let ty = Type::STREAM;
+    let proto = Protocol::TCP;
+    let data = [1, 2, 3, 4];
+    let server_addr = net::SocketAddr::from_str("[::1]:60000").unwrap();
+    let client_addr = net::SocketAddr::from_str("[::1]:65003").unwrap();
+
+    let server = Socket::new(family, ty, proto).unwrap();
+    assert!(server.bind(&server_addr).is_ok());
+    let addr = server.name().unwrap();
+    assert_eq!(addr, server_addr);
+    assert!(server.listen(1).is_ok());
+
+    let client = Socket::new(family, ty, proto).unwrap();
+    assert!(client.bind(&client_addr).is_ok());
+    let addr = client.name().unwrap();
+    assert_eq!(addr, client_addr);
+
+    let th = thread::spawn(move || {
+        let result = server.accept4(NON_BLOCKING | NON_INHERITABLE);
+        assert!(result.is_ok());
+        let (result_socket, result_addr) = result.unwrap();
+
+        assert_eq!(result_addr, client_addr);
+
+        // Check whether the `NON_INHERITABLE` flag worked
+        let result = result_socket.get_inheritable();
+        assert!(result.is_ok() && result.unwrap() == false);
+
+		// Check whether the `NON_BLOCKING` flag worked
+        let mut buf = [0; 10];
+        let result = result_socket.recv(&mut buf, 0);
+        assert!(result.is_err() && result.unwrap_err().kind() == std::io::ErrorKind::WouldBlock);
+        assert!(result_socket.set_blocking(true).is_ok());
+
+        let result = result_socket.recv(&mut buf, 0);
+
+        assert!(result.is_ok());
+        let result_len = result.unwrap();
+        assert_eq!(result_len, data.len());
+        assert_eq!(buf[result_len], 0);
+        assert_eq!(&buf[..result_len], data);
+    });
+
+    let result = client.connect(&server_addr);
+    assert!(result.is_ok());
+    
+    thread::sleep(time::Duration::from_millis(50));
+    assert!(client.send(&data, 0).is_ok());
 
     assert!(th.join().is_ok());
 }
@@ -158,7 +213,7 @@ fn socket_test_options() {
     #[cfg(unix)]
     let name: c_int = libc::SO_REUSEADDR; //SO_REUSEADDR
 
-    let socket = Socket::new(Family::IPV4, Type::STREAM, Protocol::TCP).unwrap();
+    let socket = Socket::new(Family::IPv4, Type::STREAM, Protocol::TCP).unwrap();
 
     let result = socket.get_opt::<c_int>(level, name);
     assert!(result.is_ok());
@@ -178,8 +233,10 @@ fn socket_test_options() {
     #[cfg(not(target_os = "macos"))]
     assert_eq!(result.unwrap(), value_true);
 
-    assert!(socket.set_nonblocking(true).is_ok());
-    assert!(socket.set_nonblocking(false).is_ok());
+    assert!(socket.set_blocking(false).is_ok());
+    assert!(socket.set_inheritable(false).is_ok());
+    assert!(socket.set_blocking(true).is_ok());
+    assert!(socket.set_inheritable(true).is_ok());
 }
 
 #[cfg(windows)]
@@ -194,7 +251,7 @@ fn socket_as_into_from_traits() {
     let raw_socket;
 
     {
-        let socket = Socket::new(Family::IPV4, Type::STREAM, Protocol::TCP).unwrap();
+        let socket = Socket::new(Family::IPv4, Type::STREAM, Protocol::TCP).unwrap();
         raw_socket = socket.into_raw_socket();
     }
 
@@ -216,7 +273,7 @@ fn socket_as_into_from_traits() {
     let raw_socket;
 
     {
-        let socket = Socket::new(Family::IPV4, Type::STREAM, Protocol::TCP).unwrap();
+        let socket = Socket::new(Family::IPv4, Type::STREAM, Protocol::TCP).unwrap();
         raw_socket = socket.into_raw_fd();
     }
 
@@ -236,9 +293,9 @@ fn socket_select_timeout() {
 
     let server_addr = net::SocketAddr::from_str("222.0.0.1:60004").unwrap();
 
-    let client = Socket::new(Family::IPV4, Type::STREAM, Protocol::TCP).unwrap();
+    let client = Socket::new(Family::IPv4, Type::STREAM, Protocol::TCP).unwrap();
 
-    assert!(client.set_nonblocking(true).is_ok());
+    assert!(client.set_blocking(false).is_ok());
     let result = client.connect(&server_addr);
     assert!(result.is_err()); //Non-blocking connect returns error
     assert_eq!(result.err().unwrap().raw_os_error().unwrap(), would_block_errno);
@@ -260,14 +317,14 @@ fn socket_select_connect() {
     #[cfg(unix)]
     let would_block_errno = libc::EINPROGRESS;
 
-    let family = Family::IPV4;
+    let family = Family::IPv4;
     let ty = Type::STREAM;
     let proto = Protocol::TCP;
     let server_addr = net::SocketAddr::from_str("127.0.0.1:60006").unwrap();
 
     let server = Socket::new(family, ty, proto).unwrap();
     assert!(server.bind(&server_addr).is_ok());
-    assert!(server.listen(0).is_ok());
+    server.listen(0).unwrap();
 
     let client = Socket::new(family, ty, proto).unwrap();
 
@@ -276,7 +333,7 @@ fn socket_select_connect() {
         assert!(result.is_ok());
     });
 
-    assert!(client.set_nonblocking(true).is_ok());
+    assert!(client.set_blocking(false).is_ok());
     let result = client.connect(&server_addr);
     assert!(result.is_err()); //Non-blocking connect returns error
     assert_eq!(result.err().unwrap().raw_os_error().unwrap(), would_block_errno);
