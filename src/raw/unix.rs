@@ -27,36 +27,13 @@ mod libc {
         suseconds_t
     };
 
-    #[repr(C)]
-    #[derive(Copy, Clone)]
-    pub struct in_addr {
-        pub s_addr: [u8; 4]
-    }
-
-    #[repr(C)]
-    #[derive(Copy, Clone)]
-    pub struct sockaddr_in {
-        pub sin_family: sa_family_t,
-        pub sin_port: in_port_t,
-        pub sin_addr: in_addr,
-        pub sin_zero: [u8; 8],
-    }
-
-    #[repr(C)]
-    #[derive(Copy, Clone)]
-    pub struct in6_addr {
-        pub s6_addr: [u16; 8],
-    }
-
-    #[repr(C)]
-    #[derive(Copy, Clone)]
-    pub struct sockaddr_in6 {
-        pub sin6_family: sa_family_t,
-        pub sin6_port: in_port_t,
-        pub sin6_flowinfo: u32,
-        pub sin6_addr: in6_addr,
-        pub sin6_scope_id: u32,
-    }
+	pub use self::libc::{
+        sockaddr_in,
+        sockaddr_in6,
+        
+        in_addr,
+        in6_addr
+    };
 
     pub type SOCKET = c_int;
     pub const SOCKET_ERROR: c_int = -1;
@@ -561,10 +538,8 @@ fn sockaddr_to_addr(storage: &sockaddr_storage, len: socklen_t) -> io::Result<ne
         AF_INET => {
             assert!(len as usize >= mem::size_of::<sockaddr_in>());
             let storage = unsafe { *(storage as *const _ as *const sockaddr_in) };
-            let ip = net::Ipv4Addr::new(storage.sin_addr.s_addr[0],
-                                        storage.sin_addr.s_addr[1],
-                                        storage.sin_addr.s_addr[2],
-                                        storage.sin_addr.s_addr[3]);
+            let address = unsafe { *(&storage.sin_addr.s_addr as *const _ as *const [u8; 4]) };
+            let ip = net::Ipv4Addr::from(address);
 
             //Note to_be() swap bytes on LE targets
             //As IP stuff is always BE, we need swap only on LE targets
@@ -573,14 +548,7 @@ fn sockaddr_to_addr(storage: &sockaddr_storage, len: socklen_t) -> io::Result<ne
         AF_INET6 => {
             assert!(len as usize >= mem::size_of::<sockaddr_in6>());
             let storage = unsafe { *(storage as *const _ as *const sockaddr_in6) };
-            let ip = net::Ipv6Addr::new(storage.sin6_addr.s6_addr[0],
-                                        storage.sin6_addr.s6_addr[1],
-                                        storage.sin6_addr.s6_addr[2],
-                                        storage.sin6_addr.s6_addr[3],
-                                        storage.sin6_addr.s6_addr[4],
-                                        storage.sin6_addr.s6_addr[5],
-                                        storage.sin6_addr.s6_addr[6],
-                                        storage.sin6_addr.s6_addr[7]);
+            let ip = net::Ipv6Addr::from(storage.sin6_addr.s6_addr.clone());
 
             Ok(net::SocketAddr::V6(net::SocketAddrV6::new(ip, storage.sin6_port.to_be(), storage.sin6_flowinfo, storage.sin6_scope_id)))
         }

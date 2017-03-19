@@ -147,6 +147,56 @@ fn socket_test_tcp() {
 }
 
 #[test]
+fn socket_test_tcp6() {
+    let family = Family::IPv6;
+    let ty = Type::STREAM;
+    let proto = Protocol::TCP;
+    let data = [1, 2, 3, 4];
+    let server_addr = net::SocketAddr::from_str("[::1]:60000").unwrap();
+    let client_addr = net::SocketAddr::from_str("[::1]:65003").unwrap();
+
+    let server = Socket::new(family, ty, proto).unwrap();
+    assert!(server.bind(&server_addr).is_ok());
+    let addr = server.name().unwrap();
+    assert_eq!(addr, server_addr);
+    assert!(server.listen(1).is_ok());
+
+    let client = Socket::new(family, ty, proto).unwrap();
+    assert!(client.bind(&client_addr).is_ok());
+    let addr = client.name().unwrap();
+    assert_eq!(addr, client_addr);
+
+    let th = thread::spawn(move || {
+        let result = server.accept4(NON_BLOCKING | NON_INHERITABLE);
+        assert!(result.is_ok());
+        let (result_socket, result_addr) = result.unwrap();
+
+        assert_eq!(result_addr, client_addr);
+
+        let mut buf = [0; 10];
+        let result = result_socket.recv(&mut buf, 0);
+        assert!(result.is_err() && result.unwrap_err().kind() == std::io::ErrorKind::WouldBlock);
+        assert!(result_socket.set_nonblocking(false).is_ok());
+
+        let result = result_socket.recv(&mut buf, 0);
+
+        assert!(result.is_ok());
+        let result_len = result.unwrap();
+        assert_eq!(result_len, data.len());
+        assert_eq!(buf[result_len], 0);
+        assert_eq!(&buf[..result_len], data);
+    });
+
+    let result = client.connect(&server_addr);
+    assert!(result.is_ok());
+    
+    thread::sleep(time::Duration::from_millis(50));
+    assert!(client.send(&data, 0).is_ok());
+
+    assert!(th.join().is_ok());
+}
+
+#[test]
 fn socket_test_options() {
     let value_true: c_int = 1;
     #[cfg(windows)]
