@@ -373,7 +373,7 @@ impl Socket {
                 //  * Another thread causing havok with random file descriptors
                 //    (always very bad and nothing, particularily since there is absolutely nothing
                 //     that we OR THE CALLER can do about this)
-                sock.set_nonblocking( flags.contains(NON_BLOCKING)).expect("Setting newly obtained client socket blocking mode");
+                sock.set_blocking(!flags.contains(NON_BLOCKING)).expect("Setting newly obtained client socket blocking mode");
                 sock.set_inheritable(!flags.contains(NON_INHERITABLE)).expect("Setting newly obtained client socket inheritance mode");
 
                 (sock, addr)
@@ -457,8 +457,8 @@ impl Socket {
     }
 
     ///Sets non-blocking mode.
-    pub fn set_nonblocking(&self, value: bool) -> io::Result<()> {
-        self.ioctl(FIONBIO, value as c_ulong)
+    pub fn set_blocking(&self, value: bool) -> io::Result<()> {
+        self.ioctl(FIONBIO, (!value) as c_ulong)
     }
 
 

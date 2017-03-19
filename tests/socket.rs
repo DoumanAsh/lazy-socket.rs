@@ -181,7 +181,7 @@ fn socket_test_tcp6() {
         let mut buf = [0; 10];
         let result = result_socket.recv(&mut buf, 0);
         assert!(result.is_err() && result.unwrap_err().kind() == std::io::ErrorKind::WouldBlock);
-        assert!(result_socket.set_nonblocking(false).is_ok());
+        assert!(result_socket.set_blocking(true).is_ok());
 
         let result = result_socket.recv(&mut buf, 0);
 
@@ -233,10 +233,10 @@ fn socket_test_options() {
     #[cfg(not(target_os = "macos"))]
     assert_eq!(result.unwrap(), value_true);
 
-    assert!(socket.set_nonblocking(true).is_ok());
-    assert!(socket.set_inheritable(true).is_ok());
-    assert!(socket.set_nonblocking(false).is_ok());
+    assert!(socket.set_blocking(false).is_ok());
     assert!(socket.set_inheritable(false).is_ok());
+    assert!(socket.set_blocking(true).is_ok());
+    assert!(socket.set_inheritable(true).is_ok());
 }
 
 #[cfg(windows)]
@@ -295,7 +295,7 @@ fn socket_select_timeout() {
 
     let client = Socket::new(Family::IPv4, Type::STREAM, Protocol::TCP).unwrap();
 
-    assert!(client.set_nonblocking(true).is_ok());
+    assert!(client.set_blocking(false).is_ok());
     let result = client.connect(&server_addr);
     assert!(result.is_err()); //Non-blocking connect returns error
     assert_eq!(result.err().unwrap().raw_os_error().unwrap(), would_block_errno);
@@ -333,7 +333,7 @@ fn socket_select_connect() {
         assert!(result.is_ok());
     });
 
-    assert!(client.set_nonblocking(true).is_ok());
+    assert!(client.set_blocking(false).is_ok());
     let result = client.connect(&server_addr);
     assert!(result.is_err()); //Non-blocking connect returns error
     assert_eq!(result.err().unwrap().raw_os_error().unwrap(), would_block_errno);

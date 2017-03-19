@@ -365,15 +365,15 @@ impl Socket {
     ///Accept a new incoming client connection and return its files descriptor and address.
     ///
     ///This is an emulation of the corresponding Unix system call, that will automatically call
-    ///`.set_nonblocking` and `.set_inheritable` with parameter values based on the value of
-    ///`flags` on the created client socket:
+    ///`.set_blocking` and `.set_inheritable` with parameter values based on the value of `flags`
+    ///on the created client socket:
     ///
     /// * `AcceptFlags::NON_BLOCKING`    – Mark the newly created socket as non-blocking
     /// * `AcceptFlags::NON_INHERITABLE` – Mark the newly created socket as not inheritable by client processes
     pub fn accept4(&self, flags: AcceptFlags) -> io::Result<(Socket, net::SocketAddr)> {
         self.accept().map(|(sock, addr)| {
             // Emulate the two most common (and useful) `accept4` flags
-            sock.set_nonblocking( flags.contains(NON_BLOCKING)).expect("Setting newly obtained client socket blocking mode");
+            sock.set_blocking(!flags.contains(NON_BLOCKING)).expect("Setting newly obtained client socket blocking mode");
             sock.set_inheritable(!flags.contains(NON_INHERITABLE)).expect("Setting newly obtained client socket inheritance mode");
 
             (sock, addr)
@@ -452,8 +452,8 @@ impl Socket {
     }
 
     ///Sets non-blocking mode.
-    pub fn set_nonblocking(&self, value: bool) -> io::Result<()> {
-        self.ioctl(winapi::FIONBIO as c_int, value as c_ulong)
+    pub fn set_blocking(&self, value: bool) -> io::Result<()> {
+        self.ioctl(winapi::FIONBIO as c_int, (!value) as c_ulong)
     }
 
 
