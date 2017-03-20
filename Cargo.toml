@@ -18,3 +18,11 @@ libc = "^0.2.20"
 kernel32-sys = "^0.2.2"
 winapi       = "^0.2.8"
 ws2_32-sys   = "^0.2.1"
+
+[features]
+default = ["safe_buffer_len"]
+
+# Ensure that used buffers len will not overflow
+# cmp::min(buf.len(), i32::max_value() as usize)
+# Relevant only on windows as Unix uses usize for len of buffers.
+safe_buffer_len = []

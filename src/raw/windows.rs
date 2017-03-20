@@ -2,9 +2,11 @@ use std::io;
 use std::os::raw::*;
 use std::net;
 use std::mem;
-use std::cmp;
 use std::ptr;
 use std::sync::{Once, ONCE_INIT};
+
+#[cfg(feature = "safe_buffer_len")]
+use std::cmp;
 
 mod winapi {
     #![allow(bad_style)]
@@ -256,7 +258,11 @@ impl Socket {
     ///
     ///Number of received bytes is returned on success
     pub fn recv(&self, buf: &mut [u8], flags: c_int) -> io::Result<usize> {
+        #[cfg(feature = "safe_buffer_len")]
         let len = cmp::min(buf.len(), i32::max_value() as usize) as i32;
+        #[cfg(not(feature = "safe_buffer_len"))]
+        let len = buf.len() as i32;
+
         unsafe {
             match winapi::recv(self.inner, buf.as_mut_ptr() as *mut c_char, len, flags) {
                 -1 => {
@@ -279,7 +285,11 @@ impl Socket {
     ///
     ///Number of received bytes and remote address are returned on success.
     pub fn recv_from(&self, buf: &mut [u8], flags: c_int) -> io::Result<(usize, net::SocketAddr)> {
+        #[cfg(feature = "safe_buffer_len")]
         let len = cmp::min(buf.len(), i32::max_value() as usize) as i32;
+        #[cfg(not(feature = "safe_buffer_len"))]
+        let len = buf.len() as i32;
+
         unsafe {
             let mut storage: winapi::SOCKADDR_STORAGE_LH = mem::zeroed();
             let mut storage_len = mem::size_of_val(&storage) as c_int;
@@ -309,7 +319,10 @@ impl Socket {
     ///
     ///Number of sent bytes is returned.
     pub fn send(&self, buf: &[u8], flags: c_int) -> io::Result<usize> {
+        #[cfg(feature = "safe_buffer_len")]
         let len = cmp::min(buf.len(), i32::max_value() as usize) as i32;
+        #[cfg(not(feature = "safe_buffer_len"))]
+        let len = buf.len() as i32;
 
         unsafe {
             match winapi::send(self.inner, buf.as_ptr() as *const c_char, len, flags) {
@@ -336,7 +349,10 @@ impl Socket {
     ///Note: the socket will be bound, if it isn't already.
     ///Use method `name` to determine address.
     pub fn send_to(&self, buf: &[u8], peer_addr: &net::SocketAddr, flags: c_int) -> io::Result<usize> {
+        #[cfg(feature = "safe_buffer_len")]
         let len = cmp::min(buf.len(), i32::max_value() as usize) as i32;
+        #[cfg(not(feature = "safe_buffer_len"))]
+        let len = buf.len() as i32;
         let (addr, addr_len) = get_raw_addr(peer_addr);
 
         unsafe {

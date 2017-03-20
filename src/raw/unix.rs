@@ -1,8 +1,8 @@
 use std::net;
 use std::io;
 use std::mem;
-use std::cmp;
 use std::ptr;
+use std::cmp;
 
 mod libc {
     extern crate libc;
@@ -256,7 +256,8 @@ impl Socket {
     ///
     ///Number of received bytes is returned on success
     pub fn recv(&self, buf: &mut [u8], flags: c_int) -> io::Result<usize> {
-        let len = cmp::min(buf.len(), i32::max_value() as usize) as size_t;
+        let len = buf.len();
+
         unsafe {
             match recv(self.inner, buf.as_mut_ptr() as *mut c_void, len, flags) {
                 -1 => Err(io::Error::last_os_error()),
@@ -269,7 +270,8 @@ impl Socket {
     ///
     ///Number of received bytes and remote address are returned on success.
     pub fn recv_from(&self, buf: &mut [u8], flags: c_int) -> io::Result<(usize, net::SocketAddr)> {
-        let len = cmp::min(buf.len(), i32::max_value() as usize) as size_t;
+        let len = buf.len();
+
         unsafe {
             let mut storage: sockaddr_storage = mem::zeroed();
             let mut storage_len = mem::size_of_val(&storage) as socklen_t;
@@ -288,7 +290,7 @@ impl Socket {
     ///
     ///Number of sent bytes is returned.
     pub fn send(&self, buf: &[u8], flags: c_int) -> io::Result<usize> {
-        let len = cmp::min(buf.len(), i32::max_value() as usize) as size_t;
+        let len = buf.len();
 
         unsafe {
             match send(self.inner, buf.as_ptr() as *const c_void, len, flags) {
@@ -315,7 +317,7 @@ impl Socket {
     ///Note: the socket will be bound, if it isn't already.
     ///Use method `name` to determine address.
     pub fn send_to(&self, buf: &[u8], peer_addr: &net::SocketAddr, flags: c_int) -> io::Result<usize> {
-        let len = cmp::min(buf.len(), i32::max_value() as usize) as size_t;
+        let len = buf.len();
         let (addr, addr_len) = get_raw_addr(peer_addr);
 
         unsafe {
