@@ -1,17 +1,22 @@
 environment:
   matrix:
-  - TARGET: x86_64-pc-windows-msvc
-  - TARGET: x86_64-pc-windows-gnu
   - TARGET: i686-pc-windows-msvc
+    CHANNEL: beta
+  - TARGET: x86_64-pc-windows-msvc
+    CHANNEL: beta
+  - TARGET: x86_64-pc-windows-gnu
+    CHANNEL: beta
+
 install:
-  - ps: Start-FileDownload "https://static.rust-lang.org/dist/rust-nightly-${env:TARGET}.exe"
-  - rust-nightly-%TARGET%.exe /VERYSILENT /NORESTART /DIR="C:\Rust"
-  - SET PATH=%PATH%;C:\Rust\bin
-  - SET PATH=%PATH%;C:\MinGW\bin
-  - rustc -V
+  - curl -sSf -o rustup-init.exe https://win.rustup.rs
+  - rustup-init.exe --default-host %TARGET% --default-toolchain %CHANNEL% -y
+  - set PATH=%PATH%;C:\Users\appveyor\.cargo\bin
+  - rustc -Vv
   - cargo -V
 
 build_script:
   - cargo build
+  - cargo build --no-default-features
+
 test_script:
   - cargo test

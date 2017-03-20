@@ -1,7 +1,6 @@
 language: rust
 rust:
   - beta
-  - nightly
 
 os:
   - linux
@@ -11,4 +10,5 @@ sudo: false
 
 script:
   - cargo build
+  - cargo build --no-default-features
   - cargo test
