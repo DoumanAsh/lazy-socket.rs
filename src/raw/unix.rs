@@ -346,7 +346,7 @@ impl Socket {
     /// * `AcceptFlags::NON_BLOCKING`    – Mark the newly created socket as non-blocking
     /// * `AcceptFlags::NON_INHERITABLE` – Mark the newly created socket as not inheritable by client processes
     ///
-    ///Depending on the operating system's availablility of the `accept4(2)` system call this call
+    ///Depending on the operating system's availability of the `accept4(2)` system call this call
     ///either pass the flags on to the operating system or emulate the call using `accept(2)`.
     pub fn accept4(&self, flags: AcceptFlags) -> io::Result<(Socket, net::SocketAddr)> {
         #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd", target_os = "dragonflybsd"))]
@@ -371,9 +371,9 @@ impl Socket {
                 // The only errors that can happen here fall into two categories:
                 //
                 //  * Programming errors on our side
-                //    (unlikely, but in this case panicing is actually the right thing to do anyway)
-                //  * Another thread causing havok with random file descriptors
-                //    (always very bad and nothing, particularily since there is absolutely nothing
+                //    (unlikely, but in this case panicking is actually the right thing to do anyway)
+                //  * Another thread causing havoc with random file descriptors
+                //    (always very bad and nothing, since there is absolutely nothing
                 //     that we OR USER can do about this)
                 sock.set_blocking(!flags.contains(NON_BLOCKING)).expect("Setting newly obtained client socket blocking mode");
                 sock.set_inheritable(!flags.contains(NON_INHERITABLE)).expect("Setting newly obtained client socket inheritance mode");
@@ -387,7 +387,7 @@ impl Socket {
     ///Accept a new incoming client connection and return its files descriptor and address.
     ///
     ///As this uses the classic `accept(2)` system call internally, you are **strongly advised** to
-    ///use the `.accept4()` method instead to get definied blocking and inheritance semantics for
+    ///use the `.accept4()` method instead to get defined blocking and inheritance semantics for
     ///the created file descriptor.
     pub fn accept(&self) -> io::Result<(Socket, net::SocketAddr)> {
         unsafe {
@@ -472,7 +472,7 @@ impl Socket {
     ///
     ///This means that the socket will still be available to forked off child processes until it
     ///calls `execve(2)` to complete the creation of a new process. A forking server application
-    ///(or similar) should therefor not expect this flag to have any effect on spawned off workers;
+    ///(or similar) should therefore not expect this flag to have any effect on spawned off workers;
     ///you're advised to manually call `.close()` on the socket instance in the worker process
     ///instead. The standard library's `std::process` facility is not impacted by this however.
     pub fn set_inheritable(&self, value: bool) -> io::Result<()> {
