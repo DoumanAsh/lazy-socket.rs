@@ -27,7 +27,7 @@ mod libc {
         suseconds_t
     };
 
-	pub use self::libc::{
+    pub use self::libc::{
         sockaddr_in,
         sockaddr_in6,
 
@@ -72,14 +72,18 @@ mod libc {
         AF_UNIX,
         AF_INET,
         AF_INET6,
-        AF_NETLINK,
-        AF_PACKET,
         SOCK_STREAM,
         SOCK_DGRAM,
         SOCK_RAW,
         SOCK_SEQPACKET,
         SOCK_NONBLOCK,
         SOCK_CLOEXEC
+    };
+
+    #[cfg(target_os = "linux")]
+    pub use self::libc::{
+        AF_NETLINK,
+        AF_PACKET,
     };
 
     //Functions
@@ -132,9 +136,9 @@ pub mod Family {
     pub const UNIX: c_int = AF_UNIX;
     pub const IPv4: c_int = AF_INET;
     pub const IPv6: c_int = AF_INET6;
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
     pub const NETLINK: c_int = AF_NETLINK;
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
     pub const PACKET: c_int = AF_PACKET;
 }
 
@@ -500,11 +504,11 @@ impl Socket {
         Ok(())
     }
 
-	///Returns whether this will be inherited by newly created processes or not.
-	///
-	///See `set_inheritable` for a detailed description of what this means.
-	pub fn get_inheritable(&self) -> io::Result<bool> {
-		unsafe {
+    ///Returns whether this will be inherited by newly created processes or not.
+    ///
+    ///See `set_inheritable` for a detailed description of what this means.
+    pub fn get_inheritable(&self) -> io::Result<bool> {
+        unsafe {
             let flags = libc::fcntl(self.inner, libc::F_GETFD);
             if flags < 0 {
                 return Err(io::Error::last_os_error());
@@ -512,7 +516,7 @@ impl Socket {
 
             Ok((flags & libc::FD_CLOEXEC) == 0)
         }
-	}
+    }
 
 
     ///Stops receive and/or send over socket.
