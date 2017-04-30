@@ -1,6 +1,6 @@
 [package]
 name = "lazy-socket"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Douman <douman@gmx.se>"]
 description = "Low level Raw Socket API. WIP"
 repository = "https://github.com/DoumanAsh/lazy-socket.rs"
@@ -12,7 +12,7 @@ keywords = ["socket"]
 bitflags = "^0.8"
 
 [target."cfg(unix)".dependencies]
-libc = "^0.2.20"
+libc = "^0.2.22"
 
 [target."cfg(windows)".dependencies]
 kernel32-sys = "^0.2.2"
