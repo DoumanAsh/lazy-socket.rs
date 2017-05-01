@@ -194,7 +194,7 @@ fn socket_test_tcp6() {
 
     let result = client.connect(&server_addr);
     assert!(result.is_ok());
-    
+
     thread::sleep(time::Duration::from_millis(50));
     assert!(client.send(&data, 0).is_ok());
 
@@ -215,6 +215,7 @@ fn socket_test_options() {
 
     let socket = Socket::new(Family::IPv4, Type::STREAM, Protocol::TCP).unwrap();
 
+    //On unix even bool options are of int type.
     let result = socket.get_opt::<c_int>(level, name);
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), 0);
@@ -225,13 +226,7 @@ fn socket_test_options() {
     let result = socket.get_opt::<c_int>(level, name);
     assert!(result.is_ok());
 
-    //TODO: For some reason OSX returns here 4
-    //      Need to find out what is wrong
-    //      For now as long as it non zero it is true.
-    #[cfg(target_os = "macos")]
-    assert!(result.unwrap() > 0);
-    #[cfg(not(target_os = "macos"))]
-    assert_eq!(result.unwrap(), value_true);
+    assert!(result.unwrap() != 0);
 
     assert!(socket.set_blocking(false).is_ok());
     assert!(socket.set_inheritable(false).is_ok());
