@@ -315,18 +315,10 @@ fn socket_select_connect() {
     let family = Family::IPv4;
     let ty = Type::STREAM;
     let proto = Protocol::TCP;
-    let server_addr = net::SocketAddr::from_str("127.0.0.1:60006").unwrap();
-
-    let server = Socket::new(family, ty, proto).unwrap();
-    assert!(server.bind(&server_addr).is_ok());
-    server.listen(0).unwrap();
+    //Google DNS
+    let server_addr = net::SocketAddr::from_str("8.8.8.8:53").unwrap();
 
     let client = Socket::new(family, ty, proto).unwrap();
-
-    let th = thread::spawn(move || {
-        let result = server.accept();
-        assert!(result.is_ok());
-    });
 
     assert!(client.set_blocking(false).is_ok());
     let result = client.connect(&server_addr);
@@ -336,6 +328,4 @@ fn socket_select_connect() {
     let result = lazy_socket::raw::select(&[], &[&client], &[&client], None);
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), 1);
-
-    assert!(th.join().is_ok());
 }
