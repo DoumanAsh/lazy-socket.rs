@@ -8,6 +8,14 @@
 The library serves as thin wrapper over socket API.
 It provides necessary minimum amount of safety and easy to use.
 
+## Obsolete kinda
+
+It seems I wouldn't need this library anymore as there is [socket2](https://github.com/alexcrichton/socket2-rs)
+by [alexcrichton](https://github.com/alexcrichton).
+
+He is definitely more trustworthy and my library might as well be forgotten.
+So go socket2 instead.
+
 ## Examples
 
 ### Create TCP socket and connect in non-blocking mode.
