@@ -27,6 +27,11 @@ mod libc {
         suseconds_t
     };
 
+    #[cfg(target_env = "musl")]
+    pub type IoctlRequestT = c_int;
+    #[cfg(not(target_env = "musl"))]
+    pub type IoctlRequestT = c_ulong;
+
     pub use self::libc::{
         sockaddr_in,
         sockaddr_in6,
@@ -450,7 +455,7 @@ impl Socket {
     }
 
     ///Sets I/O parameters of socket.
-    pub fn ioctl(&self, request: c_ulong, value: c_ulong) -> io::Result<()> {
+    pub fn ioctl(&self, request: IoctlRequestT, value: c_ulong) -> io::Result<()> {
         unsafe {
             let mut value = value;
             let value = &mut value as *mut c_ulong;
