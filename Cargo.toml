@@ -1,6 +1,6 @@
 [package]
 name = "lazy-socket"
-version = "0.2.2"
+version = "0.3.0"
 authors = ["Douman <douman@gmx.se>"]
 description = "Low level Raw Socket API. WIP"
 repository = "https://github.com/DoumanAsh/lazy-socket.rs"
@@ -14,10 +14,20 @@ bitflags = "^0.8"
 [target."cfg(unix)".dependencies]
 libc = "^0.2.22"
 
-[target."cfg(windows)".dependencies]
-kernel32-sys = "^0.2.2"
-winapi       = "^0.2.8"
-ws2_32-sys   = "^0.2.1"
+[target.'cfg(windows)'.dependencies.winapi]
+version = "0.3"
+default-features = false
+features = [
+    "minwindef",
+    "handleapi",
+    "winsock2",
+    "ws2def",
+    "winerror",
+    "ntdef",
+    "inaddr",
+    "in6addr",
+    "ws2ipdef"
+]
 
 [features]
 default = ["safe_buffer_len"]

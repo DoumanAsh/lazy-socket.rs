@@ -14,22 +14,26 @@ mod winapi {
 
     extern crate winapi;
 
-    pub type SOCKET = ::std::os::windows::io::RawSocket;
+    pub type STD_SOCKET = ::std::os::windows::io::RawSocket;
 
-	pub use self::winapi::{
-		ADDRESS_FAMILY,
-		HANDLE,
+	pub use self::winapi::shared::minwindef::{
 		DWORD,
 		WORD,
-		GROUP,
-		CHAR,
 		USHORT
 	};
 
-    pub use self::winapi::{
-        INVALID_SOCKET,
-        SOCKET_ERROR,
-        FIONBIO,
+	pub use self::winapi::shared::ntdef::{
+		CHAR,
+		HANDLE,
+    };
+
+    pub use self::winapi::shared::winerror::{
+        WSAESHUTDOWN,
+        WSAEINVAL
+    };
+
+    pub use self::winapi::shared::ws2def::{
+		ADDRESS_FAMILY,
 
         AF_UNSPEC,
         AF_INET,
@@ -49,33 +53,40 @@ mod winapi {
         IPPROTO_UDP,
         IPPROTO_ICMPV6,
 
-        WSAESHUTDOWN,
-        WSAEINVAL,
+        SOCKADDR_STORAGE_LH,
+        SOCKADDR_IN,
+        SOCKADDR,
+    };
+
+    pub const SOCK_NONBLOCK: winapi::ctypes::c_int = 0o0004000;
+    pub const SOCK_CLOEXEC: winapi::ctypes::c_int = 0o2000000;
+
+    pub use self::winapi::shared::ws2ipdef::SOCKADDR_IN6_LH;
+
+    pub use self::winapi::shared::inaddr::{
+        in_addr,
+    };
+    pub use self::winapi::shared::in6addr::{
+        in6_addr,
+    };
+
+    pub use self::winapi::um::winsock2::{
+        SOCKET,
+		GROUP,
+
+        INVALID_SOCKET,
+        SOCKET_ERROR,
+        FIONBIO,
 
         FD_SETSIZE,
         WSADESCRIPTION_LEN,
-        WSASYS_STATUS_LEN
-    };
+        WSASYS_STATUS_LEN,
 
-    pub const SOCK_NONBLOCK: winapi::c_int = 0o0004000;
-    pub const SOCK_CLOEXEC: winapi::c_int = 0o2000000;
-
-    pub use self::winapi::{
         WSADATA,
         fd_set,
         timeval,
-        SOCKADDR_STORAGE_LH,
-        in_addr,
-        in6_addr,
-        SOCKADDR_IN,
-        sockaddr_in6,
-        SOCKADDR,
-        LPWSADATA
-    };
+        LPWSADATA,
 
-    extern crate ws2_32;
-
-    pub use self::ws2_32::{
         WSAStartup,
         WSACleanup,
 
@@ -97,12 +108,10 @@ mod winapi {
         select
     };
 
-    extern crate kernel32;
-
     // Currently not available in `winapi`.
-    pub const HANDLE_FLAG_INHERIT: winapi::DWORD = 1;
+    pub const HANDLE_FLAG_INHERIT: DWORD = 1;
 
-    pub use self::kernel32::{
+    pub use self::winapi::um::handleapi::{
     	SetHandleInformation,
     	GetHandleInformation
     };
@@ -150,11 +159,11 @@ pub mod Type {
 pub mod Protocol {
     use super::{c_int, winapi};
 
-    pub const NONE:   c_int = winapi::IPPROTO_NONE.0 as i32;
-    pub const ICMPv4: c_int = winapi::IPPROTO_ICMP.0 as i32;
-    pub const TCP:    c_int = winapi::IPPROTO_TCP.0 as i32;
-    pub const UDP:    c_int = winapi::IPPROTO_UDP.0 as i32;
-    pub const ICMPv6: c_int = winapi::IPPROTO_ICMPV6.0 as i32;
+    pub const NONE:   c_int = winapi::IPPROTO_NONE as i32;
+    pub const ICMPv4: c_int = winapi::IPPROTO_ICMP as i32;
+    pub const TCP:    c_int = winapi::IPPROTO_TCP as i32;
+    pub const UDP:    c_int = winapi::IPPROTO_UDP as i32;
+    pub const ICMPv6: c_int = winapi::IPPROTO_ICMPV6 as i32;
 }
 
 #[allow(non_snake_case)]
@@ -531,7 +540,7 @@ fn sockaddr_to_addr(storage: &winapi::SOCKADDR_STORAGE_LH, len: c_int) -> io::Re
         winapi::AF_INET => {
             assert!(len as usize >= mem::size_of::<winapi::SOCKADDR_IN>());
             let storage = unsafe { *(storage as *const _ as *const winapi::SOCKADDR_IN) };
-            let address = unsafe { storage.sin_addr.S_un_b() };
+            let address = unsafe { storage.sin_addr.S_un.S_un_b() };
             let ip = net::Ipv4Addr::new(address.s_b1,
                                         address.s_b2,
                                         address.s_b3,
@@ -542,11 +551,14 @@ fn sockaddr_to_addr(storage: &winapi::SOCKADDR_STORAGE_LH, len: c_int) -> io::Re
             Ok(net::SocketAddr::V4(net::SocketAddrV4::new(ip, storage.sin_port.to_be())))
         }
         winapi::AF_INET6 => {
-            assert!(len as usize >= mem::size_of::<winapi::sockaddr_in6>());
-            let storage = unsafe { *(storage as *const _ as *const winapi::sockaddr_in6) };
-            let ip = net::Ipv6Addr::from(storage.sin6_addr.s6_addr.clone());
+            assert!(len as usize >= mem::size_of::<winapi::SOCKADDR_IN6_LH>());
+            let storage = unsafe { *(storage as *const _ as *const winapi::SOCKADDR_IN6_LH) };
+            let ip = unsafe { storage.sin6_addr.u.Byte().clone() };
+            let ip = net::Ipv6Addr::from(ip);
 
-            Ok(net::SocketAddr::V6(net::SocketAddrV6::new(ip, storage.sin6_port.to_be(), storage.sin6_flowinfo, storage.sin6_scope_id)))
+            let scope = unsafe { *storage.u.sin6_scope_id() };
+
+            Ok(net::SocketAddr::V6(net::SocketAddrV6::new(ip, storage.sin6_port.to_be(), storage.sin6_flowinfo, scope)))
         }
         _ => {
             Err(io::Error::new(io::ErrorKind::InvalidInput, "Invalid addr type."))
@@ -568,22 +580,22 @@ use std::os::windows::io::{
 };
 
 impl AsRawSocket for Socket {
-    fn as_raw_socket(&self) -> winapi::SOCKET {
-        self.inner
+    fn as_raw_socket(&self) -> winapi::STD_SOCKET {
+        self.inner as winapi::STD_SOCKET
     }
 }
 
 impl FromRawSocket for Socket {
-    unsafe fn from_raw_socket(sock: winapi::SOCKET) -> Self {
-        Socket {inner: sock}
+    unsafe fn from_raw_socket(sock: winapi::STD_SOCKET) -> Self {
+        Socket {inner: sock as winapi::SOCKET}
     }
 }
 
 impl IntoRawSocket for Socket {
-    fn into_raw_socket(self) -> winapi::SOCKET {
+    fn into_raw_socket(self) -> winapi::STD_SOCKET {
         let result = self.inner;
         mem::forget(self);
-        result
+        result as winapi::STD_SOCKET
     }
 }
 
